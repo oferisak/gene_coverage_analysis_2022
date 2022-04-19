@@ -1,0 +1,121 @@
+---
+title: "Per-Gene Coverage Report"
+author: "Genomics Center at Clalit"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: united
+    toc: true
+    toc_float: false
+---
+```{r initial_setup,include=F}
+analysis_or_report='report'
+picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/picard_coverage_analysis_2022-04-03-1/'
+#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
+gene_list_file<-NA
+gene_list<-NA
+```
+
+
+```{r render_report,eval=F,echo=F}
+library(rmarkdown)
+render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/picard_gene_list_coverage_report.Rmd', 
+       output_dir = picard_analysis_output_folder,
+       output_file = ifelse(!is.na(gene_list_file),
+                            glue('{picard_analysis_output_folder}/picard_gene_coverage_report.{stringr::str_replace(basename(gene_list_file),".(csv|tsv)","")}.{Sys.Date()}.html'),
+                            glue('{picard_analysis_output_folder}/picard_gene_coverage_report.{Sys.Date()}.html')
+),
+quiet = F)
+```
+
+```{r setup, include=FALSE,warning=F,message=F}
+
+project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
+knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_chunk$set(echo = F)
+library(ProjectTemplate)
+setwd(project_dir)
+load.project()
+
+```
+
+```{r load_data,message=F}
+
+coverage_df<-parse_picard_per_target_output_folder(picard_analysis_output_folder)
+gene_cov_summary<-calculate_per_target_coverage(coverage_df)
+# if gene list file is provided, parse it and filter results by it
+if (!is.na(gene_list_file) & gene_list_file!=''){
+  gene_list<-readr::read_delim(gene_list_file,col_names = c('gene_name'))
+  gene_cov_summary<-gene_cov_summary%>%filter(gene_name%in%gene_list$gene_name)
+}
+gene_cov_metrics<-gene_cov_summary%>%ungroup()%>%group_by(group_name)%>%
+  summarize(mean_cov_across_transcripts=mean(mean_coverage),
+            num_o_transcripts_with_any_0x=sum(pct_0x>0),
+            num_o_transcripts_with_0x_more_than_10pct=sum(pct_0x>0.1))
+```
+
+```{r gene_list_details, results = 'asis',eval=T,include=T,warning=F,message=F}
+if (!is.na(gene_list)){
+    cat(glue('## Gene list: {basename(gene_list_file)}\n{paste0(gene_list$gene_name,collapse=", ")}'))
+    cat("\n\n")
+}
+```
+
+## Per group Metrics
+
+```{r gene_summary_metrics,warning=F,message=F}
+DT::datatable(gene_cov_metrics,
+              filter = "top",
+              rownames= F,
+              # datatable definitions
+              extensions = list("Buttons" = NULL,
+                                "FixedColumns" = NULL),
+              options = list(
+                          scrollX=T,
+                          #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                          dom = 'BRrltpi',
+                          autoWidth=TRUE,
+                          lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                          buttons = list('colvis')
+                        )
+              )
+```
+
+## All Genes Summary Table
+
+```{r gene_summary_table,warning=F,message=F}
+DT::datatable(gene_cov_summary,
+              filter = "top",
+              rownames= F,
+              # datatable definitions
+              extensions = list("Buttons" = NULL,
+                                "FixedColumns" = NULL),
+              options = list(
+                          scrollX=T,
+                          #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                          dom = 'BRrltpi',
+                          autoWidth=TRUE,
+                          lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                          buttons = list('colvis')
+                        )
+              )
+
+```
+
+```{r gene_list_cov, results = 'asis',fig.width=8,fig.height=16,eval=T,include=T,warning=F,message=F}
+if (!is.na(gene_list)){
+    cat("## ", basename(gene_list_file), "\n")
+    p<-gene_cov_summary%>%mutate(pct_covered=1-pct_0x)%>%
+      ggplot(aes(x=forcats::fct_reorder(factor(gene_name),desc(pct_covered)),y=pct_covered,fill=pct_covered))+
+      geom_col()+facet_wrap(group_name~.)+
+      coord_flip()+
+      labs(y='Percent covered',x=NULL)+guides(fill='none')+
+      scale_y_continuous(labels = scales::percent)+
+      scale_fill_gradient2(low='darkred',mid='orange',high='darkcyan',midpoint=0.5,limits=c(0,1))+
+      theme_minimal()+theme(strip.text = element_text(size=15))
+    #cat(knitr::knit_print(print(p)))
+    knitr::knit_print(p)
+    cat("\n\n")
+}
+```
+

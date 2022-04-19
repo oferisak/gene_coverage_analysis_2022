@@ -1,0 +1,46 @@
+---
+title: "bed_coverage_analysis"
+author: "Ofer Isakov"
+date: "3/25/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
+knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_chunk$set(echo = F)
+library(ProjectTemplate)
+setwd(project_dir)
+load.project()
+```
+
+
+```{r bed_coverage_analysis}
+main_output_folder<-glue('./output/bed_coverage_analysis_{Sys.Date()}')
+main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
+
+input_beds<-c('Covered'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Covered.bed',
+              'Regions'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Regions.bed',
+              'AllTracks'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_AllTracks.bed')
+
+
+target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz'
+
+metrics<-NULL
+
+for (input_bed_name in names(input_beds)){
+  input_bed_path<-input_beds[[input_bed_name]]
+  message(glue('Analyzing {input_bed_name}: {input_bed_path}'))
+  bed_coverage_output<-run_bedtools_coverage_by_bed(reference_bed = target_region,bed_to_test = input_bed_path,output_folder=main_output_folder,bed_name = input_bed_name)
+  #bed_coverage<-read_bed_coverage_file(bed_coverage_output)
+  cov_per_transcript<-summarize_coverage_per_transcript(bed_coverage_output,output_path=glue('{main_output_folder}/{input_bed_name}/{input_bed_name}_cov_per_transcript.csv'))
+  #bed_per_transcript_summary<-bed_per_transcript_summary%>%bind_rows(data.frame(target=output_name,))
+  cov_metrics<-get_target_bed_metrics(cov_per_transcript)
+  metrics<-metrics%>%bind_rows(data.frame(target_name=input_bed_name,cov_metrics))
+}
+metrics
+
+
+
+```

@@ -1,0 +1,118 @@
+---
+title: "Clinvar Coverage Analysis Report"
+author: "Genomics Center at Clalit"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: united
+    toc: true
+    toc_float: false
+---
+```{r initial_setup,include=F}
+analysis_or_report='report'
+clinvar_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/clinvar_coverage_analysis_2022-04-03/'
+#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
+gene_list_file<-NA
+gene_list<-NA
+```
+
+
+```{r render_report,eval=F,echo=F}
+library(rmarkdown)
+render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
+       output_dir = clinvar_analysis_output_folder,
+       output_file = glue('{clinvar_analysis_output_folder}/clinvar_coverage_by_bam_report.{Sys.Date()}.html'),
+       quiet = F)
+```
+
+```{r setup, include=FALSE,warning=F,message=F}
+
+project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
+knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_chunk$set(echo = F)
+library(ProjectTemplate)
+setwd(project_dir)
+load.project()
+
+```
+
+```{r load_data,message=F}
+clinvar_analysis_output_file<-grep('clinvar_coverage_analysis_results',list.files(clinvar_analysis_output_folder),value=T)
+clinvar_analysis_output<-readr::read_delim(glue('{clinvar_analysis_output_folder}/{clinvar_analysis_output_file}'))
+clinvar_analysis_output<-clinvar_analysis_output%>%mutate(var_group=case_when(
+  grepl('frame|missense|nonsense|synonym|stop|initiatior',var_type)~'cds variant',
+  grepl('splic',var_type)~'splicing',
+  grepl('intron|UTR',var_type)~'intron_and_utr',
+  grepl('stream',var_type)~'intergenic',
+  grepl('non-coding',var_type)~'non-coding transcript',
+  grepl('unspecified',var_type)~'unspecified'
+))
+clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%group_by(group_name,var_type)%>%
+  summarize(across(where(is.numeric),mean))
+
+
+clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%group_by(group_name,var_group)%>%
+  summarize(across(where(is.numeric),mean))
+```
+
+## Clinvar coverage per variant group
+
+```{r var_group_gtsummary,warning=F,message=F }
+tbls<-list()
+for (gn in unique(clinvar_analysis_output$group_name)){
+  tbls[[gn]]<-clinvar_analysis_output %>% filter(group_name==gn)%>%
+    select(var_group,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars) %>% 
+    tbl_summary(by=var_group)
+}
+
+tbl1 <-
+  tbl_stack(
+    tbls, 
+    group_header = names(tbls)
+  ) %>%
+  modify_footnote(all_stat_cols() ~ NA)
+tbl1
+```
+
+```{r var_group_plot,warning=F,message=F,fig.width=10,fig.height=10}
+
+clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%summarize(x0_cov_vars=sum(x0_cov_vars))%>%
+  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name))+
+  geom_boxplot(alpha=0.6)+facet_wrap(var_group~.)+
+  scale_fill_nejm()+
+  labs(fill=NULL,x=NULL,y='Number of variants without coverage')+
+  theme_minimal()+
+  theme(legend.position = 'top',strip.text = element_text(size=15))
+
+```
+
+## Clinvar coverage per variant type
+
+```{r var_type_summary_metrics,warning=F,message=F}
+tbls<-list()
+for (gn in unique(clinvar_analysis_output$group_name)){
+  tbls[[gn]]<-clinvar_analysis_output %>% filter(group_name==gn)%>%
+    select(var_type,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars) %>% 
+    tbl_summary(by=var_type)
+}
+
+tbl1 <-
+  tbl_stack(
+    tbls, 
+    group_header = names(tbls)
+  ) %>%
+  modify_footnote(all_stat_cols() ~ NA)
+tbl1
+```
+
+```{r var_type_plot,warning=F,message=F,fig.width=15,fig.height=10}
+
+clinvar_analysis_output%>%
+  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name))+
+  geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
+  scale_fill_nejm()+
+  labs(fill=NULL,x=NULL,y='Number of variants without coverage')+
+  theme_minimal()+
+  theme(legend.position = 'top',strip.text = element_text(size=15))
+
+```
