@@ -15,7 +15,7 @@ reference_files<-list.files('./coverage_references/',full.names = T)
 # read accessory data
 segdup_intersect_data<-readr::read_delim('./accessory_data/refseq_hg19_curated_cds_vs_segdup.csv.gz')
 # filter duplications that are less than 10% of the exon
-segdup_intersect_data<-segdup_intersect_data%>%filter(overlap_perc>0.1)
+segdup_intersect_data<-segdup_intersect_data%>%filter(overlap_perc>0.1)%>%mutate(exon_num=exon_num+1)
 
 # read data
 read_reference_data<-function(group_name_by_file_name=F){
@@ -47,12 +47,14 @@ read_reference_data<-function(group_name_by_file_name=F){
 }
 reference_data<-read_reference_data(group_name_by_file_name = T)
 
+# add coverage categories and change the exon number to be 1-based (instead of 0 based as in UCSC)
 per_transcript_reference_coverage_db<-reference_data[['per_transcript_reference_coverage_db']]%>%
     mutate(coverage_cat=forcats::fct_relevel(factor(coverage_cat),'0x','1-20x','20-50x','50-100x','>100x'),
            above_20x=ifelse(coverage_cat%in%c('0x','1-20x'),F,T))
 per_exon_reference_coverage_db<-reference_data[['per_exon_reference_coverage_db']]%>%
     mutate(coverage_cat=forcats::fct_relevel(factor(coverage_cat),'0x','1-20x','20-50x','50-100x','>100x'),
-           above_20x=ifelse(coverage_cat%in%c('0x','1-20x'),F,T))%>%
+           above_20x=ifelse(coverage_cat%in%c('0x','1-20x'),F,T),
+           exon_num=exon_num+1)%>%
     left_join(segdup_intersect_data%>%select(transcript_name,exon_num,chr,dup_perc))%>%
     mutate(dup_level_above_98_perc=ifelse(!is.na(dup_perc) & dup_perc>0.98,T,F))
 
@@ -74,6 +76,9 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
                                                           icon = icon('dna')),
                                                  menuItem("Disclaimer table",
                                                           tabName = "disclaimer_table", 
+                                                          icon = icon('dna')),
+                                                 menuItem("Disclaimer text",
+                                                          tabName = "disclaimer_text", 
                                                           icon = icon('dna'))
                                      )
                     ),
@@ -119,11 +124,7 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
                                     fluidRow(
                                         fileInput("gene_list_file", "Select gene list file",
                                                   multiple = FALSE,
-                                                  accept = c("text/csv",
-                                                             "text/comma-separated-values,text/plain",
-                                                             ".csv",
-                                                             "text/tsv",
-                                                             ".tsv",'xls','xlsx')),
+                                                  accept = c(".csv",".tsv",'.xls','.xlsx')),
                                         div(DT::dataTableOutput(outputId = 'gene_list_table'), 
                                             style='font-size:125%;'))
                                     ),
@@ -147,9 +148,12 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
                                     div(DT::dataTableOutput(outputId = 'per_exon_cov'), 
                                         style='font-size:100%;')),
                             tabItem('disclaimer_table',
-                                    div(selectizeInput('lib_prep_kit_disclaimer', label='Select Library Prep Kits', multiple=F,choices=unique(per_transcript_reference_coverage_db$group_name),width = 800,options= list(maxOptions = 5000)), 
+                                    div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Library Prep Kits', multiple=F,choices=unique(per_transcript_reference_coverage_db$group_name),width = 800,options= list(maxOptions = 5000)), 
                                         style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId = 'disclaimer_table'), 
+                                        style='font-size:100%;')),
+                            tabItem('disclaimer_text',
+                                    div(textOutput('disclaimer_text'), 
                                         style='font-size:100%;'))
                         ),
                     )
@@ -239,11 +243,11 @@ server <- function(input, output) {
         })
         # Disclaimer table tab
         
-        observeEvent(input$lib_prep_kit_disclaimer,{
+        observeEvent(input$lib_prep_kit_disclaimer_table,{
             
             per_transcript_cov<-per_transcript_reference_coverage_db%>%
                 filter(gene_name%in%gene_list$gene_symbol,
-                       group_name==input$lib_prep_kit_transcript)
+                       group_name==input$lib_prep_kit_disclaimer_table)
             
             good_cov_transcripts<-per_transcript_cov%>%
                 group_by(gene_name,transcript_name,chr)%>%
@@ -268,15 +272,23 @@ server <- function(input, output) {
             disclaimer_table<-good_cov_transcripts%>%
                 left_join(bad_cov_exons)%>%
                 left_join(high_dup_exons)%>%
-                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_more_than_10perc_below_20x)&is.na(exons_with_dup_level_above_98_perc)),T,F)))%>%
+                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_more_than_10perc_below_20x)&is.na(exons_with_dup_level_above_98_perc)),T,F)))
+            
+            print(disclaimer_table)
+            disclaimer_text<-disclaimer_table%>%filter(in_disclaimer==TRUE)%>%
+                mutate(as_text=glue('{gene_name}:{transcript_name}'))%>%
+                mutate(as_text=ifelse(!is.na(exons_with_more_than_10perc_below_20x),glue('{as_text}:Exons with >10% below 20x:{exons_with_more_than_10perc_below_20x}'),as_text))%>%
+                mutate(as_text=ifelse(!is.na(exons_with_dup_level_above_98_perc),glue('{as_text}:Exons with >10% with >98% homology:{exons_with_dup_level_above_98_perc}'),as_text))
+            
+            disclaimer_table<-disclaimer_table%>%
                 rename('Add to disclaimer'=in_disclaimer,
-                       'Exons with >10% below 20x (zero-based)'=exons_with_more_than_10perc_below_20x,
-                       'Exons with >10% with >98% homology (zero-based)'=exons_with_dup_level_above_98_perc,
+                       'Exons with >10% below 20x'=exons_with_more_than_10perc_below_20x,
+                       'Exons with >10% with >98% homology'=exons_with_dup_level_above_98_perc,
                        'Percent above 20x'=perc_above_20x,
                        'Gene name'=gene_name,
                        'Transcript name'=transcript_name)
             output$disclaimer_table<-DT::renderDataTable(DT::datatable(disclaimer_table%>%select(-c(chr)),
-                                                     options=list(scrollX=F,pageLength=50,
+                                                     options=list(scrollX=F,pageLength=nrow(disclaimer_table),
                                                                   buttons = c('csv', 'excel'),
                                                                   dom = 'Bfrtip'),
                                                      extensions = 'Buttons',
@@ -284,7 +296,8 @@ server <- function(input, output) {
                                                      rownames= FALSE,
                                                      filter = list(position = 'top', clear = FALSE))%>%
                                                          formatPercentage(c('Percent above 20x')))
-            
+                
+            output$disclaimer_text<-renderText(paste0(disclaimer_text%>%pull(as_text),collapse=' | '))
             
         })
         
