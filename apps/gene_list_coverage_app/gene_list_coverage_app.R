@@ -10,70 +10,40 @@ library(stringr)
 library(glue)
 library(plotly)
 library(ggsci)
-# read references
-reference_files<-list.files('./coverage_references/',full.names = T)
+
+#gene_list<-readr::read_delim('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv',col_names = c('gene_symbol','confidence'))
+# read refseq names
+refseq_to_gene<-readr::read_delim('./accessory_data/refseq_to_gene.txt')
+# remove bad chr
+refseq_to_gene<-refseq_to_gene%>%filter(!grepl('_',chrom))
+
 # read accessory data
-segdup_intersect_data<-readr::read_delim('./accessory_data/refseq_hg19_curated_cds_vs_segdup.csv.gz')
 # filter duplications that are less than 10% of the exon
-segdup_intersect_data<-segdup_intersect_data%>%filter(overlap_perc>0.1)%>%mutate(exon_num=exon_num+1)
+segdup_intersect_data<-readr::read_delim('./accessory_data/refseq_hg19_curated_cds_vs_segdup.csv.gz')
+segdup_intersect_data<-segdup_intersect_data%>%
+    filter(overlap_perc>0.1)%>%
+    #mutate(exon_num=exon_num)%>%
+    filter(!grepl('_',chr))
 
-# read data
-read_reference_data<-function(group_name_by_file_name=F){
-    reference_data<-list('per_transcript_reference_coverage_db'=NULL,
-                         'per_exon_reference_coverage_db'=NULL)
-    #per_transcript_reference_coverage_db<-NULL
-    #per_exon_reference_coverage_db<-NULL
-    for (file_name in reference_files){
-        message(glue('Parsing {file_name}'))
-        if(grepl('per_transcript',file_name)){
-            group_per_trascript<-readr::read_delim(file_name)
-            if (group_name_by_file_name){
-                group_name_from_file<-stringr::str_replace(basename(file_name),'_.+','')
-                group_per_trascript$group_name<-group_name_from_file
-            }
-            reference_data[['per_transcript_reference_coverage_db']]<-reference_data[['per_transcript_reference_coverage_db']]%>%
-                bind_rows(group_per_trascript)
-        }else{
-            group_per_exon<-readr::read_delim(file_name)
-            if (group_name_by_file_name){
-                group_name_from_file<-stringr::str_replace(basename(file_name),'_.+','')
-                group_per_exon$group_name<-group_name_from_file
-            }
-            reference_data[['per_exon_reference_coverage_db']]<-reference_data[['per_exon_reference_coverage_db']]%>%
-                bind_rows(group_per_exon)
-        }
-    }
-    return(reference_data)
-}
-reference_data<-read_reference_data(group_name_by_file_name = T)
-
-# add coverage categories and change the exon number to be 1-based (instead of 0 based as in UCSC)
-per_transcript_reference_coverage_db<-reference_data[['per_transcript_reference_coverage_db']]%>%
-    mutate(coverage_cat=forcats::fct_relevel(factor(coverage_cat),'0x','1-20x','20-50x','50-100x','>100x'),
-           above_20x=ifelse(coverage_cat%in%c('0x','1-20x'),F,T))
-per_exon_reference_coverage_db<-reference_data[['per_exon_reference_coverage_db']]%>%
-    mutate(coverage_cat=forcats::fct_relevel(factor(coverage_cat),'0x','1-20x','20-50x','50-100x','>100x'),
-           above_20x=ifelse(coverage_cat%in%c('0x','1-20x'),F,T),
-           exon_num=exon_num+1)%>%
-    left_join(segdup_intersect_data%>%select(transcript_name,exon_num,chr,dup_perc))%>%
-    mutate(dup_level_above_98_perc=ifelse(!is.na(dup_perc) & dup_perc>0.98,T,F))
+refseq_curated<-readr::read_delim('./accessory_data/refseq_hg19_curated_exons_20220410.bed.gz',
+                                  col_names = c('chr','start','end','interval_name','zero','strand'))%>%
+    filter(!grepl('_',chr))%>%
+    mutate(transcript_name=stringr::str_extract(interval_name,'(.+)_(exon|cds)')%>%stringr::str_replace('_(exon|cds)',''),
+           exon_num=as.numeric(stringr::str_extract(interval_name,'(exon|cds)_\\d+')%>%stringr::str_extract('\\d+')))
+# add total number of exons
+refseq_curated<-refseq_curated%>%left_join(refseq_curated%>%group_by(transcript_name,chr)%>%summarize(total_exons=n()))
+refseq_with_segdup<-refseq_curated%>%left_join(segdup_intersect_data%>%select(-c(start,end)),by=c('transcript_name','chr','exon_num'))
 
 # Define UI ####
-ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
+ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                     titleWidth = 290), 
                     dashboardSidebar(width = 290,
                                      sidebarMenu(menuItem("Gene List Upload",
                                                           tabName = "gene_list_upload", 
                                                           icon = icon('search')),
-                                                 menuItem("Per Transcript Coverage",
-                                                          tabName = "per_transcript_cov", 
-                                                          icon = icon('dna')),
-                                                 menuItem("Per Transcript Coverage Plots",
-                                                          tabName = "per_transcript_cov_plots", 
-                                                          icon = icon('dna')),
-                                                 menuItem("Per Exon Coverage",
-                                                          tabName = "per_exon_cov", 
-                                                          icon = icon('dna')),
+                                                 menuItem('Segmental dups plots',
+                                                          tabName = "segdup_plots", 
+                                                          icon = icon('search')),
                                                  menuItem("Disclaimer table",
                                                           tabName = "disclaimer_table", 
                                                           icon = icon('dna')),
@@ -129,26 +99,17 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
                                             style='font-size:125%;'))
                                     ),
                             
-                            
-                            tabItem('per_transcript_cov',
-                                    div(selectizeInput('lib_prep_kit_transcript', label='Select Library Prep Kits', multiple=F,choices=unique(per_transcript_reference_coverage_db$group_name),width = 800,options= list(maxOptions = 5000)), 
-                                        style='font-size:200%;'),
-                                    div(DT::dataTableOutput(outputId = 'per_transcript_cov'), 
-                                        style='font-size:100%;')),
-                            tabItem('per_transcript_cov_plots',
+
+                            tabItem('segdup_plots',
                                     fluidPage(
-                                        div(numericInput('select_below20x_thresh', label='Plot transcripts with this rate (0.0-1.0) below 20x', value=0.2,min = 0,max=1), 
+                                        div(selectizeInput('lib_prep_kit_plots', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
                                             style='font-size:200%;'),
-                                        div(uiOutput(outputId='per_transcript_cov_plot'),height = '400px')    
+                                        div(uiOutput(outputId='per_transcript_cov_plot'),height = '400px')
                                     )),
                                     #reactableOutput(outputId = 'per_transcript_cov')),
-                            tabItem('per_exon_cov',
-                                    div(selectizeInput('lib_prep_kit_exon', label='Select Library Prep Kits', multiple=F,choices=unique(per_transcript_reference_coverage_db$group_name),width = 800,options= list(maxOptions = 5000)), 
-                                        style='font-size:200%;'),
-                                    div(DT::dataTableOutput(outputId = 'per_exon_cov'), 
-                                        style='font-size:100%;')),
+
                             tabItem('disclaimer_table',
-                                    div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Library Prep Kits', multiple=F,choices=unique(per_transcript_reference_coverage_db$group_name),width = 800,options= list(maxOptions = 5000)), 
+                                    div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
                                         style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId = 'disclaimer_table'), 
                                         style='font-size:100%;')),
@@ -159,7 +120,6 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Gene Coverage Calculator'),
                     )
                     #tags$head(tags$style(HTML('* {font-family: "Kirnberg"};')))
 )
-
 
 
 # Define server logic required to draw a histogram
@@ -173,129 +133,87 @@ server <- function(input, output) {
             gene_list<-readr::read_delim(input$gene_list_file$datapath,col_names = c('gene_symbol'))
         }
         # verify gene names
-        gene_list<-gene_list%>%mutate(gene_found_in_reference=gene_symbol%in%per_transcript_reference_coverage_db$gene_name)
+        #gene_list<-gene_list%>%mutate(gene_found_in_reference=gene_symbol%in%refseq_to_gene$gene_name)
+        gene_list_annotated<-gene_list%>%select(gene_symbol)%>%left_join(refseq_to_gene)
         gene_symbols<- gene_list%>%pull(gene_symbol)
-        output$gene_list_table<-DT::renderDataTable(gene_list%>%select(gene_symbol,gene_found_in_reference),
+        output$gene_list_table<-DT::renderDataTable(gene_list_annotated,
                                                     options=list(scrollX=F,pageLength=10),
                                                     selection='single',
                                                     rownames= FALSE,
                                                     filter = list(position = 'top', clear = FALSE))
-        observeEvent(input$lib_prep_kit_transcript,{
-            per_transcript_cov<-per_transcript_reference_coverage_db%>%
-                filter(gene_name%in%gene_list$gene_symbol,
-                       group_name==input$lib_prep_kit_transcript)
-            
-            good_cov_transcripts<-per_transcript_cov%>%
-                group_by(gene_name,transcript_name,chr)%>%
-                summarize(perc_above_20x=sum(ifelse(above_20x,perc_at_coverage,0)))
-            
-            output$per_transcript_cov<-DT::renderDataTable(good_cov_transcripts%>%select(-c(chr)),
-                                                        options=list(scrollX=F,pageLength=50),
-                                                        selection='single',
-                                                        rownames= FALSE,
-                                                        filter = list(position = 'top', clear = FALSE))
-            
-            observeEvent(input$select_below20x_thresh,{
-                
-                to_plot_data<-per_transcript_cov%>%
-                    filter(gene_name%in%(good_cov_transcripts%>%
-                                             filter((1-perc_above_20x)>input$select_below20x_thresh)%>%
-                                             pull(gene_name)))
-                
-                plot_coverage_data<-function(gene_name_to_plot){
-                    
-                    cov_plot<-to_plot_data%>%filter(gene_name==gene_name_to_plot)%>%
-                        ggplot(aes(x=transcript_name,y=perc_at_coverage,fill=coverage_cat))+
-                        geom_col(alpha=0.7)+
-                        coord_flip()+
-                        scale_fill_manual(values=c('0x'='darkred','1-20x'='orange','20-50x'='darkolivegreen3','50-100x'='chartreuse4','>100x'='darkgreen'))+
-                        theme_minimal()+theme(legend.position = 'top')+
-                        labs(x='Percent at coverage',y=NULL)
-                    box(title = gene_name_to_plot,renderPlot(cov_plot))
+        # add transcript names
+        # join gene list with segdup
+        genes_seg_data<-gene_list_annotated%>%
+            inner_join(segdup_intersect_data)
+        
+        observeEvent(input$lib_prep_kit_plots,{
+
+                to_plot<-refseq_with_segdup%>%
+                    left_join(refseq_to_gene)%>%
+                    filter(transcript_name%in%(gene_list_annotated$transcript_name))%>%
+                    mutate(dup_level=cut(dup_perc,breaks=c(0,0.98,1),labels=c('<0.98','>0.98')))%>%
+                    mutate(dup_level=ifelse(is.na(dup_level),'<0.98',as.character(dup_level)))
+                if (input$lib_prep_kit_plots=='select'){
+                    to_plot<-to_plot%>%filter(cannonical)
                 }
                 
+                plot_coverage_data<-function(gene_name_to_plot){
+                    cov_plot<-to_plot%>%filter(gene_symbol==gene_name_to_plot)%>%
+                        ggplot(aes(x=transcript_name,xend=transcript_name,y=start,yend=end,col=dup_level))+
+                        geom_segment(size=10)+
+                        coord_flip()+
+                        scale_color_manual(values=c('gray','darkred'))+
+                        theme_minimal()+
+                        labs(x=NULL,y=NULL,color='Duplication level')+
+                        theme(legend.position = 'bottom')
+                    
+                    box(title = gene_name_to_plot,renderPlot(cov_plot))
+                }
+
                 output$per_transcript_cov_plot<-renderUI({
-                    lapply(to_plot_data%>%pull(gene_name)%>%unique(), plot_coverage_data)
+                    lapply(to_plot%>%arrange(gene_symbol)%>%pull(gene_symbol)%>%unique(), plot_coverage_data)
                 })
-            })
-            
+
             #output$per_transcript_cov_plot<-renderPlotly(cov_plot)
-            
+
         })
         
-        # Per exon tab
-        observeEvent(input$lib_prep_kit_exon,{
-            per_exon_cov<-per_exon_reference_coverage_db%>%
-                filter(gene_name%in%gene_list$gene_symbol,
-                       group_name==input$lib_prep_kit_exon)
-
-            good_cov_exons<-per_exon_cov%>%
-                group_by(gene_name,transcript_name,exon_num,chr,dup_level_above_98_perc)%>%
-                summarize(perc_above_20x=sum(ifelse(above_20x,perc_at_coverage,0)))
-
-            output$per_exon_cov<-DT::renderDataTable(good_cov_exons%>%select(-c(chr)),
-                                                           options=list(scrollX=F,pageLength=50),
-                                                           selection='single',
-                                                           rownames= FALSE,
-                                                           filter = list(position = 'top', clear = FALSE))
-
-        
-        })
         # Disclaimer table tab
         
         observeEvent(input$lib_prep_kit_disclaimer_table,{
+          
+            high_dup_exons<-genes_seg_data%>%
+                filter(dup_perc>0.98)%>%
+                group_by(gene_symbol,transcript_name)%>%
+                summarize(exons_with_dup_level_above_98_perc=paste0(unique(exon_num+1),collapse=', '))
             
-            per_transcript_cov<-per_transcript_reference_coverage_db%>%
-                filter(gene_name%in%gene_list$gene_symbol,
-                       group_name==input$lib_prep_kit_disclaimer_table)
-            
-            good_cov_transcripts<-per_transcript_cov%>%
-                group_by(gene_name,transcript_name,chr)%>%
-                summarize(perc_above_20x=sum(ifelse(above_20x,perc_at_coverage,0)))
-            
-            per_exon_cov<-per_exon_reference_coverage_db%>%
-                filter(gene_name%in%gene_list$gene_symbol,
-                       group_name==input$lib_prep_kit_exon)
-            
-            bad_cov_exons<-per_exon_cov%>%
-                group_by(gene_name,transcript_name,exon_num,chr)%>%
-                summarize(perc_above_20x=sum(ifelse(above_20x,perc_at_coverage,0)))%>%
-                filter(perc_above_20x<0.9)%>%ungroup()%>%
-                group_by(gene_name,transcript_name,chr)%>%
-                summarize(exons_with_more_than_10perc_below_20x=paste0(unique(exon_num),collapse=', '))
-                
-            high_dup_exons<-per_exon_cov%>%
-                filter(dup_level_above_98_perc)%>%
-                group_by(gene_name,transcript_name,chr)%>%
-                summarize(exons_with_dup_level_above_98_perc=paste0(unique(exon_num),collapse=', '))
-            
-            disclaimer_table<-good_cov_transcripts%>%
-                left_join(bad_cov_exons)%>%
+            disclaimer_table<-gene_list_annotated%>%
+                left_join(refseq_curated%>%select(transcript_name,total_exons)%>%distinct())%>%
                 left_join(high_dup_exons)%>%
-                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_more_than_10perc_below_20x)&is.na(exons_with_dup_level_above_98_perc)),T,F)))
+                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_dup_level_above_98_perc)),T,F)))
+            
+            if (input$lib_prep_kit_disclaimer_table=='select'){
+                disclaimer_table<-disclaimer_table%>%filter(cannonical)
+            }
             
             print(disclaimer_table)
             disclaimer_text<-disclaimer_table%>%filter(in_disclaimer==TRUE)%>%
-                mutate(as_text=glue('{gene_name}:{transcript_name}'))%>%
-                mutate(as_text=ifelse(!is.na(exons_with_more_than_10perc_below_20x),glue('{as_text}:Exons with >10% below 20x:{exons_with_more_than_10perc_below_20x}'),as_text))%>%
+                mutate(as_text=glue('{gene_symbol}:{transcript_name}'))%>%
                 mutate(as_text=ifelse(!is.na(exons_with_dup_level_above_98_perc),glue('{as_text}:Exons with >10% with >98% homology:{exons_with_dup_level_above_98_perc}'),as_text))
             
             disclaimer_table<-disclaimer_table%>%
                 rename('Add to disclaimer'=in_disclaimer,
-                       'Exons with >10% below 20x'=exons_with_more_than_10perc_below_20x,
                        'Exons with >10% with >98% homology'=exons_with_dup_level_above_98_perc,
-                       'Percent above 20x'=perc_above_20x,
-                       'Gene name'=gene_name,
+                       'Gene name'=gene_symbol,
                        'Transcript name'=transcript_name)
-            output$disclaimer_table<-DT::renderDataTable(DT::datatable(disclaimer_table%>%select(-c(chr)),
+            output$disclaimer_table<-DT::renderDataTable(DT::datatable(disclaimer_table,
                                                      options=list(scrollX=F,pageLength=nrow(disclaimer_table),
                                                                   buttons = c('csv', 'excel'),
                                                                   dom = 'Bfrtip'),
                                                      extensions = 'Buttons',
                                                      selection='single',
                                                      rownames= FALSE,
-                                                     filter = list(position = 'top', clear = FALSE))%>%
-                                                         formatPercentage(c('Percent above 20x')))
+                                                     filter = list(position = 'top', clear = FALSE)))
                 
             output$disclaimer_text<-renderText(paste0(disclaimer_text%>%pull(as_text),collapse=' | '))
             
