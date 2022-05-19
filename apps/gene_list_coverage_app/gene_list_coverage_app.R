@@ -104,12 +104,16 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                     fluidPage(
                                         div(selectizeInput('lib_prep_kit_plots', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
                                             style='font-size:200%;'),
+                                        div(sliderInput('segdup_plots_thresh', label='Select Minimal Duplication Level',value = 0.98, min = 0.9,max=1,width = 800), 
+                                            style='font-size:200%;'),
                                         div(uiOutput(outputId='per_transcript_cov_plot'),height = '400px')
                                     )),
                                     #reactableOutput(outputId = 'per_transcript_cov')),
 
                             tabItem('disclaimer_table',
                                     div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
+                                        style='font-size:200%;'),
+                                    div(sliderInput('disclaimer_segdup_thresh', label='Select Minimal Duplication Level',value = 0.98, min = 0.9,max=1,width = 800), 
                                         style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId = 'disclaimer_table'), 
                                         style='font-size:100%;')),
@@ -147,12 +151,16 @@ server <- function(input, output) {
             inner_join(segdup_intersect_data)
         
         observeEvent(input$lib_prep_kit_plots,{
-
+            observeEvent(input$segdup_plots_thresh,{
+                
+                segdup_thresh<-input$segdup_plots_thresh
+                transcripts_with_dups<-refseq_with_segdup%>%filter(dup_perc>segdup_thresh)%>%pull(transcript_name)%>%unique()
                 to_plot<-refseq_with_segdup%>%
+                    mutate(dup_level=cut(dup_perc,breaks=c(0,segdup_thresh,1),labels=c(glue('<{segdup_thresh}'),glue('>{segdup_thresh}'))))%>%
+                    mutate(dup_level=factor(ifelse(is.na(dup_level),glue('<{segdup_thresh}'),as.character(dup_level))))%>%
+                    filter(transcript_name %in% transcripts_with_dups)%>%
                     left_join(refseq_to_gene)%>%
-                    filter(transcript_name%in%(gene_list_annotated$transcript_name))%>%
-                    mutate(dup_level=cut(dup_perc,breaks=c(0,0.98,1),labels=c('<0.98','>0.98')))%>%
-                    mutate(dup_level=ifelse(is.na(dup_level),'<0.98',as.character(dup_level)))
+                    filter(transcript_name%in%(gene_list_annotated$transcript_name))
                 if (input$lib_prep_kit_plots=='select'){
                     to_plot<-to_plot%>%filter(cannonical)
                 }
@@ -162,7 +170,7 @@ server <- function(input, output) {
                         ggplot(aes(x=transcript_name,xend=transcript_name,y=start,yend=end,col=dup_level))+
                         geom_segment(size=10)+
                         coord_flip()+
-                        scale_color_manual(values=c('gray','darkred'))+
+                        scale_color_manual(values=c('gray','darkred'),drop=F)+
                         theme_minimal()+
                         labs(x=NULL,y=NULL,color='Duplication level')+
                         theme(legend.position = 'bottom')
@@ -173,6 +181,7 @@ server <- function(input, output) {
                 output$per_transcript_cov_plot<-renderUI({
                     lapply(to_plot%>%arrange(gene_symbol)%>%pull(gene_symbol)%>%unique(), plot_coverage_data)
                 })
+            })
 
             #output$per_transcript_cov_plot<-renderPlotly(cov_plot)
 
@@ -181,16 +190,17 @@ server <- function(input, output) {
         # Disclaimer table tab
         
         observeEvent(input$lib_prep_kit_disclaimer_table,{
-          
+          observeEvent(input$disclaimer_segdup_thresh,{
+            disclaimer_segdup_thresh<-input$disclaimer_segdup_thresh
             high_dup_exons<-genes_seg_data%>%
-                filter(dup_perc>0.98)%>%
+                filter(dup_perc>disclaimer_segdup_thresh)%>%
                 group_by(gene_symbol,transcript_name)%>%
-                summarize(exons_with_dup_level_above_98_perc=paste0(unique(exon_num+1),collapse=', '))
+                summarize(exons_with_dup_level_above_thresh=paste0(unique(exon_num+1),collapse=', '))
             
             disclaimer_table<-gene_list_annotated%>%
                 left_join(refseq_curated%>%select(transcript_name,total_exons)%>%distinct())%>%
                 left_join(high_dup_exons)%>%
-                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_dup_level_above_98_perc)),T,F)))
+                mutate(in_disclaimer=factor(ifelse(!(is.na(exons_with_dup_level_above_thresh)),T,F)))
             
             if (input$lib_prep_kit_disclaimer_table=='select'){
                 disclaimer_table<-disclaimer_table%>%filter(cannonical)
@@ -199,11 +209,12 @@ server <- function(input, output) {
             print(disclaimer_table)
             disclaimer_text<-disclaimer_table%>%filter(in_disclaimer==TRUE)%>%
                 mutate(as_text=glue('{gene_symbol}:{transcript_name}'))%>%
-                mutate(as_text=ifelse(!is.na(exons_with_dup_level_above_98_perc),glue('{as_text}:Exons with >10% with >98% homology:{exons_with_dup_level_above_98_perc}'),as_text))
+                mutate(as_text=ifelse(!is.na(exons_with_dup_level_above_thresh),glue('{as_text}:Exons with >10% with >{disclaimer_segdup_thresh*100}% homology:{exons_with_dup_level_above_thresh}'),as_text))
             
+            dup_column_name<-glue('Exons with >10% with >{disclaimer_segdup_thresh*100}% homology')
             disclaimer_table<-disclaimer_table%>%
                 rename('Add to disclaimer'=in_disclaimer,
-                       'Exons with >10% with >98% homology'=exons_with_dup_level_above_98_perc,
+                       !!sym(dup_column_name):=exons_with_dup_level_above_thresh,
                        'Gene name'=gene_symbol,
                        'Transcript name'=transcript_name)
             output$disclaimer_table<-DT::renderDataTable(DT::datatable(disclaimer_table,
@@ -217,6 +228,7 @@ server <- function(input, output) {
                 
             output$disclaimer_text<-renderText(paste0(disclaimer_text%>%pull(as_text),collapse=' | '))
             
+          })
         })
         
     })
