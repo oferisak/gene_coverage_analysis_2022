@@ -10,13 +10,13 @@ output:
 ---
 ```{r initial_setup,include=F}
 analysis_or_report='report'
-picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/picard_coverage_analysis_2022-04-03-1'
+picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_picard_coverage_analysis_2022-06-19/'
 ```
 
 
 ```{r render_report,eval=F,echo=F}
 library(rmarkdown)
-render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/picard_coverage_analysis_report.Rmd', output_dir = picard_analysis_output_folder,output_file = glue('picard_coverage_report.{Sys.Date()}.html'),quiet = F)
+render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/picard_coverage_analysis_report.Rmd', output_dir = picard_analysis_output_folder,output_file = glue('enrichment_kit_comp_picard_coverage_report.{Sys.Date()}.html'),quiet = F)
 ```
 
 ```{r setup, include=FALSE,warning=F,message=F}

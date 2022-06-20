@@ -10,7 +10,7 @@ output:
 ---
 ```{r initial_setup,include=F}
 analysis_or_report='report'
-clinvar_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/clinvar_coverage_analysis_2022-04-03/'
+clinvar_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_clinvar_coverage_analysis_2022-06-20/'
 #gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
 gene_list_file<-NA
 gene_list<-NA
@@ -21,7 +21,7 @@ gene_list<-NA
 library(rmarkdown)
 render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
        output_dir = clinvar_analysis_output_folder,
-       output_file = glue('{clinvar_analysis_output_folder}/clinvar_coverage_by_bam_report.{Sys.Date()}.html'),
+       output_file = glue('{clinvar_analysis_output_folder}/enrichment_kit_comp_clinvar_coverage_by_bam_report.{Sys.Date()}.html'),
        quiet = F)
 ```
 
@@ -47,12 +47,34 @@ clinvar_analysis_output<-clinvar_analysis_output%>%mutate(var_group=case_when(
   grepl('non-coding',var_type)~'non-coding transcript',
   grepl('unspecified',var_type)~'unspecified'
 ))
-clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%group_by(group_name,var_type)%>%
+clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%
+  group_by(group_name,var_type)%>%
   summarize(across(where(is.numeric),mean))
 
+clinvar_analysis_var_group_output_total<-clinvar_analysis_output%>%
+  group_by(group_name,sample_name)%>%
+  summarize(mean_depth=sum(mean_depth*n),across(c(n,contains('cov_')),sum))%>%
+  mutate(var_group='total',
+         mean_depth=mean_depth/n)
 
-clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%group_by(group_name,var_group)%>%
-  summarize(across(where(is.numeric),mean))
+clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%
+  bind_rows(clinvar_analysis_var_group_output_total)%>%
+  group_by(group_name,var_group)%>%
+  summarize(n=sum(n),
+            mean_depth=mean(mean_depth),
+            across(contains('cov_'),
+                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
+  mutate(var_group=glue('{var_group} (n={n})'))%>%select(-n)
+
+output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%
+  select(-mean_depth)%>%
+  rename('Not covered'=x0_cov_vars,
+         'Below 10x'=below_x10_cov_vars,
+         'Below 20x'=below_x20_cov_vars)%>%
+  pivot_longer(-c(group_name,var_group))%>%
+  pivot_wider(names_from = var_group,values_from = value)
+
+
 ```
 
 ## Clinvar coverage per variant group

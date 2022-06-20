@@ -11,7 +11,8 @@ output:
 
 ```{r setup, include=FALSE}
 analysis_or_report='analysis'
-bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams_202203/'
+#bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams_202203/'
+bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams/'
 
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
 knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
@@ -21,6 +22,12 @@ setwd(project_dir)
 load.project()
 
 input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+
+# set whether you want to continue the run in the same dir (skipping files already created) or start the analysis in a new dir
+#main_output_folder<-glue('./output/picard_coverage_analysis_{Sys.Date()}')
+main_output_folder<-glue('./output/enrichment_kit_comp_picard_coverage_analysis_{Sys.Date()}')
+# if you want a new dir:
+main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 
 # filter only agilent files
 #input_bams_df<-input_bams_df%>%filter(group_name=='agilent')
@@ -34,39 +41,53 @@ input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'
 #                   '/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
 #                   '/media/SSD/Bioinformatics/Databases/twist/hg19_Twist_Exome_2.0.2_plus_Comprehensive_Exome_Spike-in_targets_sorted.annotated.bed',
 #                   '/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed')
-target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz')
+target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz',
+                  '/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220414.bed.gz',
+                  '/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
+                  '/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed',
+                  '/media/SSD/Bioinformatics/Databases/twist/hg19_Twist_Exome_2.0.2_plus_Comprehensive_Exome_Spike-in_targets_sorted.annotated.bed',
+                  '/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/target_intervals/idt_v2_twist_exome2_plus_agilent_v8_intersect.bed')
+
+per_target_analysis_req<-c('Y','Y','N','N','N','N')
+
 # Agilent targets
 # target_regions<-c('/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Covered.bed',
 #                   '/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Regions.bed')
-
+#target_regions<-c('./data/target_intervals/HPD_v4_target.txt.bed')
 
 reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
 reference_dict<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.dict'
 
-main_output_folder<-glue('./output/picard_coverage_analysis_{Sys.Date()}')
-main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 
 # record the different variables
 log_file<-glue('{main_output_folder}/picard_analysis_log_file.txt')
-add_to_log(log_file,'target_regions',target_regions)
-add_to_log(log_file,'reference_fasta',reference_fasta)
-add_to_log(log_file,'input_bams',input_bams_df)
+if (!file.exists(log_file)){
+  add_to_log(log_file,'target_regions',target_regions)
+  add_to_log(log_file,'reference_fasta',reference_fasta)
+  add_to_log(log_file,'input_bams',input_bams_df)
+}
+
+# fix target regions - remove all chromosomes found in the region and not in the dict
+target_regions<-fix_target_regions(target_regions,reference_dict,main_output_folder)
 
 # Verify that target regions are intervals
 target_intervals<-c()
+target_intervals_output_folder<-glue('{main_output_folder}/target_intervals')
+dir.create(target_intervals_output_folder)
 for (target_region in target_regions){
-  if (grepl('\\.bed',target_region)){
-    target_interval<-run_BedToIntervalList(input_bed = target_region,
-                                           output_folder = './data/target_intervals',
-                                           reference_dict = reference_dict)
-    target_intervals<-c(target_intervals,target_interval)
-  }else{
-    target_intervals<-c(target_intervals,target_region)
-  }
+  message(target_region)
+  target_interval<-run_BedToIntervalList(input_bed = target_region,
+                                         output_folder = target_intervals_output_folder,
+                                         #output_folder = './data/target_intervals',
+                                         reference_dict = reference_dict)
+  target_intervals<-c(target_intervals,target_interval)
 }
+
+target_intervals_df<-data.frame(target_intervals,per_target_analysis_req)
 
 bam_analysis_df<-data.frame(input_bams_df)
 coverage_df<-NULL
+
 for (group_name in unique(input_bams_df$group_name)){
   message(glue('Analyzing {group_name}..'))
   #if (group_name!='idt'){next}
@@ -76,15 +97,23 @@ for (group_name in unique(input_bams_df$group_name)){
     message(glue('Analyzing {sample_name}..'))
     sample_output_folder<-glue('{group_output_folder}/{sample_name}')
     if (!dir.exists(sample_output_folder)){dir.create(sample_output_folder)}
+
     input_bam<-input_bams_df[input_bams_df$group_name==group_name & input_bams_df$sample_name==sample_name,'sample_path']
     for (target_interval in target_intervals){
       target_interval_name<-stringr::str_replace(basename(target_interval),'.intervals.*','')
-      # if this is the first time running coverage analysis with a certain kit/reference - use this to get the reference that matches the bam file
-      picard_cov_output_file<-glue('{sample_output_folder}/{sample_name}_{target_interval_name}_picard_cov_metrics.txt')
-      per_target_output_file<-glue('{sample_output_folder}/{sample_name}_{target_interval_name}_picard_per_target_cov_metrics.txt')
-      run_CollectHsMetrics(input_bam,picard_cov_output_file,reference_fasta,target_interval,target_interval,per_target_output_file)
+      analyze_per_target<-target_intervals_df[target_intervals_df$target_interval==target_interval,'per_target_analysis_req']
+      per_target_output_file<-NA
+      if (analyze_per_target=='Y'){
+        per_target_output_file<-glue('{sample_output_folder}/{sample_name}_{target_interval_name}_picard_per_target_cov_metrics.txt')
+      }
+      picard_cov_output_file<-
+        glue('{sample_output_folder}/{sample_name}_{target_interval_name}_picard_cov_metrics.txt')
+      if (!file.exists(picard_cov_output_file)){
+        run_CollectHsMetrics(input_bam,picard_cov_output_file,reference_fasta,target_interval,target_interval,per_target_output_file)
+      }else{
+        message(glue('Found coverage analysis output file: {picard_cov_output_file}, will not run it again'))
+      }
       picard_cov_output<-parse_picard_output(picard_cov_output_file)
-      
       coverage_df<-coverage_df%>%plyr::rbind.fill(data.frame(group_name=group_name,
                                                                 sample_name=sample_name,
                                                                 picard_cov_output[['picard_coverage_metrics']]))
