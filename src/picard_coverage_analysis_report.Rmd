@@ -31,7 +31,10 @@ load.project()
 ```
 
 ```{r load_data,message=F}
-coverage_df<-parse_picard_output_folder(picard_analysis_output_folder)
+coverage_df<-parse_picard_output_folder(picard_analysis_output_folder)%>%
+  mutate(group_name=factor(group_name),
+         sample_name=factor(sample_name),
+         BAIT_SET=factor(BAIT_SET))
 ```
 
 ## Per-Sample Coverage Analysis Results Table

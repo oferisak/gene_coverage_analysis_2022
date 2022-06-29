@@ -17,6 +17,9 @@ refseq_to_gene<-readr::read_delim('./accessory_data/refseq_to_gene.txt')
 # remove bad chr
 refseq_to_gene<-refseq_to_gene%>%filter(!grepl('_',chrom))
 
+# fix gene names to be the approved ones
+standard_genenames_table<-readr::read_delim('./accessory_data/standard_genenames_db_2022-04-07.csv')
+
 # read accessory data
 # filter duplications that are less than 10% of the exon
 segdup_intersect_data<-readr::read_delim('./accessory_data/refseq_hg19_curated_cds_vs_segdup.csv.gz')
@@ -136,9 +139,25 @@ server <- function(input, output) {
         }else{
             gene_list<-readr::read_delim(input$gene_list_file$datapath,col_names = c('gene_symbol'))
         }
-        # verify gene names
+        
+        # fix gene names
+        # first check if any of the provided gene symbols is not found in the refseq gene name table
+        gene_list_genes_not_in_refseq<-gene_list%>%
+            filter(!gene_symbol%in%refseq_to_gene$gene_symbol)%>%
+            select(provided_gene_symbol=gene_symbol)%>%
+            left_join(standard_genenames_table,by=c('provided_gene_symbol'='prev_symbol'))%>%
+            filter(!is.na(approved_gene_symbol))# remove those that are not found in both refseq and the standard gene table (bad genes)
+        # then, for the genes that are found in the standard gene names table, change the gene symbol to the approved name 
+        gene_list<-gene_list%>%
+            mutate(gene_name_provided=gene_symbol)%>%
+            rowwise()%>%
+            mutate(gene_symbol=ifelse(gene_symbol%in%gene_list_genes_not_in_refseq$provided_gene_symbol,
+                                      gene_list_genes_not_in_refseq%>%filter(provided_gene_symbol==gene_symbol)%>%slice(1)%>%pull(approved_gene_symbol),#if there are more than one approved gene symbol for the previous symbol, pick the first one.
+                                      gene_symbol))
+        
         #gene_list<-gene_list%>%mutate(gene_found_in_reference=gene_symbol%in%refseq_to_gene$gene_name)
-        gene_list_annotated<-gene_list%>%select(gene_symbol)%>%left_join(refseq_to_gene)
+        gene_list_annotated<-gene_list%>%select(gene_symbol,gene_name_provided)%>%left_join(refseq_to_gene)
+        #fix input gene names to match refseq
         gene_symbols<- gene_list%>%pull(gene_symbol)
         output$gene_list_table<-DT::renderDataTable(gene_list_annotated,
                                                     options=list(scrollX=F,pageLength=10),

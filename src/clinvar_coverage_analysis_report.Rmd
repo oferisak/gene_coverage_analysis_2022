@@ -39,28 +39,59 @@ load.project()
 ```{r load_data,message=F}
 clinvar_analysis_output_file<-grep('clinvar_coverage_analysis_results',list.files(clinvar_analysis_output_folder),value=T)
 clinvar_analysis_output<-readr::read_delim(glue('{clinvar_analysis_output_folder}/{clinvar_analysis_output_file}'))
-clinvar_analysis_output<-clinvar_analysis_output%>%mutate(var_group=case_when(
-  grepl('frame|missense|nonsense|synonym|stop|initiatior',var_type)~'cds variant',
-  grepl('splic',var_type)~'splicing',
-  grepl('intron|UTR',var_type)~'intron_and_utr',
-  grepl('stream',var_type)~'intergenic',
-  grepl('non-coding',var_type)~'non-coding transcript',
-  grepl('unspecified',var_type)~'unspecified'
-))
+clinvar_analysis_output<-clinvar_analysis_output%>%
+  mutate(
+    var_group=case_when(
+      grepl('frame|missense|nonsense|synonym|stop|initiatior',var_type)~'cds variant',
+      grepl('splic',var_type)~'splicing',
+      grepl('intron|UTR',var_type)~'intron_and_utr',
+      grepl('stream',var_type)~'intergenic',
+      grepl('non-coding',var_type)~'non-coding transcript',
+      grepl('unspecified',var_type)~'unspecified'),
+    group_name=factor(group_name),
+    sample_name=factor(sample_name),
+    var_type=factor(var_type),
+    var_group=factor(var_group)
+    )
+
+# By var type
 clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%
   group_by(group_name,var_type)%>%
-  summarize(across(where(is.numeric),mean))
+  summarize(n=min(n),
+            mean_depth=mean(mean_depth),
+            across(contains('cov_'),
+                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
+  ungroup()%>%
+  mutate(var_type=glue('{var_type} (n={n})'))%>%select(-n)
+  #summarize(across(where(is.numeric),mean))
 
+output_table_var_type_per_group<-clinvar_analysis_var_type_per_group%>%
+  select(-mean_depth)%>%
+  rename('Not covered'=x0_cov_vars,
+         'Below 10x'=below_x10_cov_vars,
+         'Below 20x'=below_x20_cov_vars)%>%
+  pivot_longer(-c(group_name,var_type))%>%
+  pivot_wider(names_from = var_type,values_from = value)%>%
+  mutate(name=factor(name))
+
+# By Var Group
 clinvar_analysis_var_group_output_total<-clinvar_analysis_output%>%
   group_by(group_name,sample_name)%>%
   summarize(mean_depth=sum(mean_depth*n),across(c(n,contains('cov_')),sum))%>%
   mutate(var_group='total',
-         mean_depth=mean_depth/n)
+         mean_depth=mean_depth/n)%>%ungroup()%>%
+  group_by(group_name)%>%
+  mutate(nsamps=length(unique(sample_name)))
+ 
 
 clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%
+  left_join(clinvar_analysis_output%>%
+              group_by(group_name,var_type)%>%
+              select(group_name,sample_name)%>%
+              summarize(nsamps=n()))%>%
   bind_rows(clinvar_analysis_var_group_output_total)%>%
   group_by(group_name,var_group)%>%
-  summarize(n=sum(n),
+  summarize(n=sum(n/nsamps),
             mean_depth=mean(mean_depth),
             across(contains('cov_'),
                    function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
@@ -72,7 +103,8 @@ output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%
          'Below 10x'=below_x10_cov_vars,
          'Below 20x'=below_x20_cov_vars)%>%
   pivot_longer(-c(group_name,var_group))%>%
-  pivot_wider(names_from = var_group,values_from = value)
+  pivot_wider(names_from = var_group,values_from = value)%>%
+  mutate(name=factor(name))
 
 
 ```
@@ -80,20 +112,23 @@ output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%
 ## Clinvar coverage per variant group
 
 ```{r var_group_gtsummary,warning=F,message=F }
-tbls<-list()
-for (gn in unique(clinvar_analysis_output$group_name)){
-  tbls[[gn]]<-clinvar_analysis_output %>% filter(group_name==gn)%>%
-    select(var_group,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars) %>% 
-    tbl_summary(by=var_group)
-}
+DT:::datatable(
+    output_table_var_group_per_group,
+    filter = "top",
+    rownames= F,
+    extensions = list("Buttons" = NULL,
+                      "FixedColumns" = NULL),
+    options = list(
+                scrollX=T,
+                #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                fixedColumns = list(leftColumns = 2),
+                dom = 'BRrltpi',
+                autoWidth=TRUE,
+                lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                buttons = list('colvis')
+              )
+    )
 
-tbl1 <-
-  tbl_stack(
-    tbls, 
-    group_header = names(tbls)
-  ) %>%
-  modify_footnote(all_stat_cols() ~ NA)
-tbl1
 ```
 
 ```{r var_group_plot,warning=F,message=F,fig.width=10,fig.height=10}
@@ -111,20 +146,22 @@ clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%summarize
 ## Clinvar coverage per variant type
 
 ```{r var_type_summary_metrics,warning=F,message=F}
-tbls<-list()
-for (gn in unique(clinvar_analysis_output$group_name)){
-  tbls[[gn]]<-clinvar_analysis_output %>% filter(group_name==gn)%>%
-    select(var_type,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars) %>% 
-    tbl_summary(by=var_type)
-}
-
-tbl1 <-
-  tbl_stack(
-    tbls, 
-    group_header = names(tbls)
-  ) %>%
-  modify_footnote(all_stat_cols() ~ NA)
-tbl1
+DT:::datatable(
+    output_table_var_type_per_group,
+    filter = "top",
+    rownames= F,
+    extensions = list("Buttons" = NULL,
+                      "FixedColumns" = NULL),
+    options = list(
+                scrollX=T,
+                #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                fixedColumns = list(leftColumns = 2),
+                dom = 'BRrltpi',
+                autoWidth=TRUE,
+                lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                buttons = list('colvis')
+              )
+    )
 ```
 
 ```{r var_type_plot,warning=F,message=F,fig.width=15,fig.height=10}

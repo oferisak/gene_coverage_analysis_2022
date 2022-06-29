@@ -10,10 +10,11 @@ output:
 ---
 ```{r initial_setup,include=F}
 analysis_or_report='report'
-picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/picard_coverage_analysis_2022-04-03-1/'
+picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_picard_coverage_analysis_2022-06-19/'
 #gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
 gene_list_file<-NA
 gene_list<-NA
+all_gene_table<-F
 ```
 
 
@@ -42,13 +43,21 @@ load.project()
 ```{r load_data,message=F}
 
 coverage_df<-parse_picard_per_target_output_folder(picard_analysis_output_folder)
+coverage_df<-coverage_df%>%mutate(
+  target_name=factor(target_name),
+  group_name=factor(group_name),
+  sample_name=factor(sample_name),
+  gc_category=factor(cut(`%gc`,breaks=seq(0,1,0.05),include.lowest =T))
+)
+
 gene_cov_summary<-calculate_per_target_coverage(coverage_df)
 # if gene list file is provided, parse it and filter results by it
 if (!is.na(gene_list_file) & gene_list_file!=''){
   gene_list<-readr::read_delim(gene_list_file,col_names = c('gene_name'))
   gene_cov_summary<-gene_cov_summary%>%filter(gene_name%in%gene_list$gene_name)
 }
-gene_cov_metrics<-gene_cov_summary%>%ungroup()%>%group_by(group_name)%>%
+
+gene_cov_metrics<-gene_cov_summary%>%ungroup()%>%group_by(target_name,group_name)%>%
   summarize(mean_cov_across_transcripts=mean(mean_coverage),
             num_o_transcripts_with_any_0x=sum(pct_0x>0),
             num_o_transcripts_with_0x_more_than_10pct=sum(pct_0x>0.1))
@@ -81,9 +90,30 @@ DT::datatable(gene_cov_metrics,
               )
 ```
 
+## Coverage by GC content
+
+```{r gc_plot,warning=F,message=F,fig.width=16,fig.height=10}
+
+toPlot<-coverage_df%>%group_by(target_name,group_name,gc_category)%>%
+  summarize(n=n(),mean_coverage=mean(mean_coverage),median_gc=median(`%gc`))
+
+g<-toPlot%>%
+  ggplot(aes(x=median_gc,y=mean_coverage,size=n,col=group_name))+
+  geom_line(alpha=0.75)+facet_wrap(target_name~.,scales='free')+
+  #scale_y_continuous(limits = c(0,150))+
+  ggsci::scale_color_nejm()+
+  theme_minimal()+
+  labs(x='GC content',y='Mean coverage')+
+  theme(legend.position = 'top',axis.text = element_text(size=10),axis.title = element_text(size=15),strip.text = element_text(size=15))
+
+print(g)
+```
+
 ## All Genes Summary Table
 
 ```{r gene_summary_table,warning=F,message=F}
+if (all_gene_table){
+  
 DT::datatable(gene_cov_summary,
               filter = "top",
               rownames= F,
@@ -99,6 +129,9 @@ DT::datatable(gene_cov_summary,
                           buttons = list('colvis')
                         )
               )
+}else{
+  cat('\n\nUser specified not to output all gene table\n\n')
+}
 
 ```
 

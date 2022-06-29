@@ -12,7 +12,7 @@ output:
 ```{r setup, include=FALSE}
 analysis_or_report='analysis'
 clinvar_file<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20220320.csv.gz'
-bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams_202203/'
+bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams/'
 
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
 knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
@@ -23,7 +23,7 @@ load.project()
 
 input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
 
-main_output_folder<-glue('./output/clinvar_coverage_analysis_{Sys.Date()}')
+main_output_folder<-glue('./output/enrichment_kit_comp_clinvar_coverage_analysis_{Sys.Date()}')
 main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 clinvar_bed<-fix_clinvar_ucsc_file(clinvar_file,main_output_folder,only_p_or_lp = T)
 ```
