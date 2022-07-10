@@ -24,11 +24,22 @@ write.table(file=padded_tr_file,
             sep='\t')
 
 # founder varaints genomic coordinates obtained from https://variantvalidator.org/
-original_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_et_al_clinical_genetics_s8.csv')
-vv_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_variant_validator_output.csv')
+original_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_et_al_clinical_genetics_s8_updated_transcript_names.csv')
+vv_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_variant_validator_output_updated_transcript_names.csv')
 
 original_founder_variants<-readr::read_delim(original_founder_file,col_names = c('gene_symbol','omim','Input'),skip = 1)
 vv_founder_variants<-readr::read_delim(vv_founder_file,comment = '#')
+
+# variants not found in the vv output
+founder_vars_not_in_vv<-vv_founder_variants%>%filter(is.na(GRCh37_POS))%>%select(Input,Warnings)%>%
+  left_join(original_founder_variants)
+
+write.table(file=glue('{app_folder}/accessory_data/founder_variants/davidov_et_al_not_in_vv.csv'),
+            founder_vars_not_in_vv,
+            col.names = F,
+            row.names = F,
+            quote = F,
+            sep='\t')
 
 # join the original file with the disease name and the vv output
 founder_variants<-original_founder_variants%>%left_join(vv_founder_variants)
@@ -60,7 +71,7 @@ bedtools_intersect_output<-system(bedtools_command,intern = T)
 fv_vs_target<-read.table(text=bedtools_intersect_output,sep='\t')
 # write the missing variants 
 write.table(fv_vs_target%>%filter(V7==0),
-            file=glue('{app_folder}/accessory_data/founder_variants/idt_missing_variants.csv'),
+            file=glue('{app_folder}/accessory_data/founder_variants/idt_missing_variants_{Sys.Date()}.csv'),
             row.names = F,
             col.names = F,
             quote = F,
