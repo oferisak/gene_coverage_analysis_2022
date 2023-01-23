@@ -53,3 +53,16 @@ exons_vs_segdup<-intersect_output%>%ungroup()%>%
 summary(exons_vs_segdup)
 
 write.table(exons_vs_segdup,file=glue('{app_folder}/accessory_data/refseq_hg19_curated_cds_vs_segdup.csv'),row.names = F,sep ='\t')
+
+# Get all the variants not covered in the given target file ####
+clinvar_vcf<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_20221224.plp.hg19.vcf'
+
+# IDT
+target_file<-'/media/SSD/Bioinformatics/Databases/idt/xgen_hg19_exome_with_mt_targets.pad50.bed'
+bedtools_intersect_with_clinvar_vcf(clinvar_vcf,bed_file = target_file,get_missing = T,
+                                    output_dir = glue('{app_folder}/accessory_data'))
+
+# coverage data ####
+
+# IDT
+
