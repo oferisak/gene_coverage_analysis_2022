@@ -331,7 +331,7 @@ server <- function(input, output) {
                 print(disclaimer_table)
                 disclaimer_text_segdup<-disclaimer_table%>%filter(in_disclaimer==TRUE & !is.na(exons_with_dup_level_above_thresh))%>%
                   mutate(as_text_segdup=glue('{gene_symbol}:{transcript_name}'))%>%
-                  mutate(as_text_segdup=ifelse(!is.na(exons_with_dup_level_above_thresh),glue('{as_text_segdup}:Exons with >10% with >{disclaimer_segdup_thresh*100}% homology:{exons_with_dup_level_above_thresh}'),as_text_segdup))
+                  mutate(as_text_segdup=ifelse(!is.na(exons_with_dup_level_above_thresh),glue('{as_text_segdup}: Exons number: {exons_with_dup_level_above_thresh}'),as_text_segdup))
                 disclaimer_text_clinvar<-disclaimer_table%>%filter(in_disclaimer==TRUE & !is.na(missing_clinvar))%>%
                   mutate(as_text_clinvar=glue('{gene_symbol}:{transcript_name}'))%>%
                   mutate(as_text_clinvar=ifelse(!is.na(missing_clinvar),glue('{as_text_clinvar}: {missing_clinvar}'),as_text_clinvar))

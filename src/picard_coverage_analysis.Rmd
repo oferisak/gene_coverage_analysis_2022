@@ -125,4 +125,44 @@ coverage_file_name<-glue('{main_output_folder}/picard_coverage_analysis_results_
 write.table(coverage_df,file=coverage_file_name,sep='\t',row.names = F)
 ```
 
+```{r analyze_results}
+main_output_folder<-glue('./output/enrichment_kit_comp_picard_coverage_analysis_2022-06-19')
+picard_results<-readr::read_delim(glue('{main_output_folder}/picard_coverage_analysis_results_2022-06-20.tsv'))
+rois<-c('refseq_hg19_curated_cds_20220414')
 
+#rois<-c('refseq_hg19_curated_cds_20220414','agilent_XT_HS_v8_hg19','hg19_Twist_Exome_2','xgen-exome-research-panel-v2-targets-hg19')
+
+cols_to_summarize<-c('MEAN_TARGET_COVERAGE',
+                     'PCT_EXC_DUPE',
+                     'PCT_TARGET_BASES_20X',
+                     'ZERO_CVG_TARGETS_PCT')
+picard_results%>%filter(BAIT_SET==roi)%>%group_by(group_name)%>%
+  summarize(across(cols_to_summarize,mean))
+
+
+for (roi in rois){
+  g<-
+    picard_results%>%filter(BAIT_SET==roi)%>%
+    select(group_name,cols_to_summarize)%>%
+    rename('Mean coverage'=MEAN_TARGET_COVERAGE,
+           'Percent duplicates'=PCT_EXC_DUPE,
+           'Percent >20x'=PCT_TARGET_BASES_20X,
+           'Percent not covered'=ZERO_CVG_TARGETS_PCT)%>%
+    select(group_name,`Percent >20x`)%>%
+    pivot_longer(-group_name)%>%
+    ggplot(aes(x=group_name,fill=group_name,y=value))+
+    geom_boxplot(color='black',alpha=0.75)+geom_jitter(size=1,alpha=0.5,width = 0.1)+
+    facet_wrap(.~name,scales='free_y',nrow = 2)+
+    ggsci::scale_fill_nejm()+ggsci::scale_color_nejm()+
+    theme_minimal()+labs(fill=NULL,title=roi)+
+    theme(legend.position = 'top',axis.text.x = element_blank())
+  g
+  ggsave(g,file=glue('{main_output_folder}/{roi}_coverage_plots.jpg'),
+       device = 'jpg',
+       width = 10,height = 10,dpi=150,bg='white')
+}
+
+g<-g+labs(title='RefSeq Coding sequnece')
+
+z<-picard_results%>%filter(BAIT_SET==roi)
+```
