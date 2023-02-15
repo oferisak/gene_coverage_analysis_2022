@@ -11,6 +11,14 @@ library(glue)
 library(plotly)
 library(ggsci)
 
+numbers_to_ranges<-function(numbers){
+  f <- function(x){
+    if (length(x) == 1) x else paste(x[1], x[length(x)], sep = "-")
+  }  
+  ranges<-tapply(numbers[order(numbers)], cumsum(c(TRUE, diff(numbers[order(numbers)]) != 1)), f)
+  return(paste0(ranges,collapse=','))
+}
+
 parse_bed_clinvar_vcf_intersect_output<-function(bed_intersect_file){
   intersect_output<-readr::read_delim(bed_intersect_file,delim='\t',col_names = F)
   intersect_output<-intersect_output%>%
@@ -311,7 +319,8 @@ server <- function(input, output) {
                 high_dup_exons<-genes_seg_data%>%
                     filter(dup_perc>disclaimer_segdup_thresh)%>%
                     group_by(gene_symbol,transcript_name)%>%
-                    summarize(exons_with_dup_level_above_thresh=paste0(unique(exon_num+1),collapse=', '))
+                    summarize(exons_with_dup_level_above_thresh=numbers_to_ranges(unique(exon_num+1)))
+                    #summarize(exons_with_dup_level_above_thresh=paste0(unique(exon_num+1),collapse=', '))
                 
                 disclaimer_table<-gene_list_annotated%>%
                     left_join(refseq_curated%>%select(transcript_name,total_exons)%>%distinct())%>%
@@ -354,7 +363,7 @@ server <- function(input, output) {
                                                                            rownames= FALSE,
                                                                            filter = list(position = 'top', clear = FALSE)))
                 
-                output$disclaimer_text_segdup<-renderText(paste0(disclaimer_text_segdup%>%pull(as_text_segdup),collapse=' | '))
+                output$disclaimer_text_segdup<-renderText(paste0(disclaimer_text_segdup%>%pull(as_text_segdup),collapse='<br/>'))
                 output$disclaimer_text_clinvar<-renderText(HTML(paste0(disclaimer_text_clinvar%>%pull(as_text_clinvar),collapse='<br/>')))
                 
             })
