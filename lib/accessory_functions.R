@@ -27,3 +27,12 @@ build_ref_according_to_bam<-function(input_bam,reference_chrs_path,reference_nam
   message(glue('Joining sequences with command: {join_command}'))
   system(join_command)
 }
+
+numbers_to_ranges<-function(numbers){
+  f <- function(x){
+    if (length(x) == 1) x else paste(x[1], x[length(x)], sep = "-")
+  }  
+  ranges<-tapply(numbers[order(numbers)], cumsum(c(TRUE, diff(numbers[order(numbers)]) != 1)), f)
+  return(paste0(ranges,collapse=','))
+}
+
