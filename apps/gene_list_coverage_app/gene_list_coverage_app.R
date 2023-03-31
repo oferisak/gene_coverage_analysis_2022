@@ -12,6 +12,7 @@ library(plotly)
 library(ggsci)
 
 numbers_to_ranges<-function(numbers){
+  if (length(numbers)==0){return('')}
   f <- function(x){
     if (length(x) == 1) x else paste(x[1], x[length(x)], sep = "-")
   }  
