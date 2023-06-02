@@ -65,4 +65,48 @@ bedtools_intersect_with_clinvar_vcf(clinvar_vcf,bed_file = target_file,get_missi
 # coverage data ####
 
 # IDT
+library("openxlsx")
+idt_coverage_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app/data_for_prepare/coverage_data/idt_exnos_coverage_genoox_202302.xlsx'
+openxlsx::getSheetNames(idt_coverage_file)
+# in the genoox file, the exon numbers are 1 based and in the refseq bed files they are 0 based
+idt_coverage_file<-openxlsx::read.xlsx(idt_coverage_file,sheet = 'Exons (canonical)')
+# Checking this issue reducing one from the exon number in the genoox file results in a higher number of retained exons
+# when joining with the refseq file. so thats the better way
+idt_coverage_file<-idt_coverage_file%>%mutate(exon=exon-1)
+# add the location information for each exon
+refseq_curated<-readr::read_delim('./accessory_data/refseq_hg19_curated_exons_20220410.bed.gz',
+                                  col_names = c('chr','start','end','interval_name','zero','strand'))%>%
+  filter(!grepl('_',chr))%>%
+  mutate(transcript_name=stringr::str_extract(interval_name,'(.+)_(exon|cds)')%>%stringr::str_replace('_(exon|cds)',''),
+         exon_num=as.numeric(stringr::str_extract(interval_name,'(exon|cds)_\\d+')%>%stringr::str_extract('\\d+')))
+
+idt_coverage_file<-idt_coverage_file%>%rename(transcript_name=transcript,exon_num=exon)
+
+# fix missing transcript names (convert them)
+missing_transcripts<-idt_coverage_file%>%
+  filter(!transcript_name%in%refseq_curated$transcript_name)%>%
+  select(transcript_name)%>%
+  distinct()%>%
+  mutate(no_iso_transcript_name=stringr::str_replace(transcript_name,'\\..+',''))%>%
+  left_join(refseq_curated%>%
+              mutate(no_iso_transcript_name=stringr::str_replace(transcript_name,'\\..+',''))%>%
+              select(no_iso_transcript_name,refseq_transcript=transcript_name)%>%distinct())
+
+idt_coverage_file<-idt_coverage_file%>%
+  left_join(missing_transcripts%>%select(transcript_name,refseq_transcript))%>%
+  mutate(transcript_name=ifelse(is.na(refseq_transcript),transcript_name,refseq_transcript))%>%
+  select(-refseq_transcript)
+
+# now join with the refseq file (and remove the missing transcripts)
+# if there are exons without covereage for the transcript add them
+gene_to_transcript<-idt_coverage_file%>%select(gene,transcript_name)%>%distinct()
+idt_coverage_with_refseq<-refseq_curated%>%
+  inner_join(gene_to_transcript)%>%
+  filter(transcript_name %in% idt_coverage_file$transcript_name)%>%
+  left_join(idt_coverage_file,by=c('gene','transcript_name','exon_num'))%>%
+  mutate(exonLength=ifelse(is.na(exonLength),end-start,))
+
+idt_coverage_file<-idt_coverage_file%>%
+  left_join(refseq_curated,by=c('transcript_name','exon_num'))
+write.table(idt_coverage_file,file=glue('./accessory_data/idt_genoox_coverage.{Sys.Date()}.csv'),sep='\t',row.names = F,quote = F)
 

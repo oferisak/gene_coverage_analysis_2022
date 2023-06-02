@@ -166,7 +166,6 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                         div(DT::dataTableOutput(outputId = 'gene_list_table'), 
                                             style='font-size:125%;'))
                                     ),
-                            
 
                             tabItem('segdup_plots',
                                     fluidPage(
@@ -187,6 +186,8 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                     div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
                                         style='font-size:200%;'),
                                     div(sliderInput('disclaimer_segdup_thresh', label='Select Minimal Duplication Level',value = 0.98, min = 0.9,max=1,width = 800), 
+                                        style='font-size:200%;'),
+                                    div(selectInput('disclaimer_coverage_kit', label='Select Kit for Coverage',choices = c('idt'),selected = 'idt',width = 800), 
                                         style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId = 'disclaimer_table'), 
                                         style='font-size:100%;')),
@@ -312,6 +313,7 @@ server <- function(input, output) {
       })
       return(to_ret())
     }
+    
     
     update_disclaimer_table<-function(gene_list_annotated,genes_seg_data,missing_clinvar_data){
         observeEvent(input$lib_prep_kit_disclaimer_table,{
