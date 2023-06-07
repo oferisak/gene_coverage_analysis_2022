@@ -97,7 +97,9 @@ refseq_with_segdup<-refseq_with_segdup%>%mutate(exon_num=ifelse(strand=='-',tota
 idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
 #idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app//accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
 
-
+founder_variants_target_cov<-list()
+founder_variants_target_cov[['idt']]<-readr::read_delim('./accessory_data/founder_variants_coverage_idt.202305.csv',delim='\t')
+founder_variants_target_cov[['idt']]<-founder_variants_target_cov[['idt']]%>%rename(gene_symbol=gene)
 # Define UI ####
 ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                     titleWidth = 290), 
@@ -111,6 +113,9 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                                  menuItem('P/LP variants not covered',
                                                           tabName = "missing_clinvar", 
                                                           icon = icon('search')),
+                                                 menuItem('Founder variants target coverage',
+                                                          tabName = "founder_vars_target_cov", 
+                                                          icon = icon('search')),
                                                  menuItem("Disclaimer table",
                                                           tabName = "disclaimer_table", 
                                                           icon = icon('dna')),
@@ -122,8 +127,7 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                     
                     dashboardBody(
                         # stlye definitions from https://stackoverflow.com/questions/52198452/how-to-change-the-background-color-of-the-shiny-dashboard-body
-                        
-                        
+
                         tags$head(tags$style(HTML('
                                 /* logo */
                                 .skin-blue .main-header .logo {
@@ -180,8 +184,11 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                           style='font-size:200%;'),
                                       div(DT::dataTableOutput(outputId='missing_clinvar_table'),
                                           style='font-size:100%;')),
-
-
+                            tabItem('founder_vars_target_cov',
+                                    div(selectizeInput('founder_var_target_selection', label='Select enrichment kit', multiple=F,choices=c('idt'),width = 800,options= list(maxOptions = 5000)), 
+                                        style='font-size:200%;'),
+                                    div(DT::dataTableOutput(outputId='founder_var_in_genes_table'),
+                                        style='font-size:100%;')),
                             tabItem('disclaimer_table',
                                     div(selectizeInput('lib_prep_kit_disclaimer_table', label='Select Refseq Set', multiple=F,choices=c('select','curated'),width = 800,options= list(maxOptions = 5000)), 
                                         style='font-size:200%;'),
@@ -197,6 +204,9 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                         style='font-size:150%;'),
                                     h2('Genes with P/LP ClinVar variants that are not covered'),
                                     div(htmlOutput('disclaimer_text_clinvar'), 
+                                        style='font-size:150%;'),
+                                    h2('Founder variants not inside target'),
+                                    div(htmlOutput('disclaimer_text_founders'), 
                                         style='font-size:150%;'))
                         ),
                     )
@@ -314,8 +324,46 @@ server <- function(input, output) {
       return(to_ret())
     }
     
+    update_founder_vars<-function(gene_symbols){
+      to_ret<-
+        eventReactive(input$founder_var_target_selection,{
+          founder_for_disclaimer<-data.frame(gene_symbol=NA,missing_founders=NA)
+          if (input$founder_var_target_selection=='idt'){
+            founder_table<-founder_variants_target_cov[['idt']]
+          }
+          founder_table<-founder_table%>%filter(gene_symbol %in% gene_symbols)%>%arrange(gene_symbol,variant)
+          founder_for_disclaimer<-founder_table%>%filter(is_covered==0)%>%
+            group_by(gene_symbol)%>%
+            summarize(missing_founders=paste0(hgvs_notation,collapse = ' | '))
+          # print('genes symbols')
+          # print(gene_symbols)
+          # print('genes in founders:')
+          # print(founder_table%>%pull(gene_symbol)%>%unique())
+          output$founder_var_in_genes_table <-
+            DT::renderDataTable(
+              DT::datatable(
+                founder_table,
+                options =
+                  list(
+                    scrollX = F,
+                    pageLength = nrow(founder_table),
+                    buttons = c('csv', 'excel'),
+                    dom = 'Bfrtip'
+                  ),
+                extensions = 'Buttons',
+                selection =
+                  'single',
+                rownames = FALSE,
+                filter = list(position = 'top', clear = FALSE)
+              )
+            )
+          #print(packed_missing_vars)
+          return(founder_for_disclaimer)
+        })
+      return(to_ret())
+    }
     
-    update_disclaimer_table<-function(gene_list_annotated,genes_seg_data,missing_clinvar_data){
+    update_disclaimer_table<-function(gene_list_annotated,genes_seg_data,missing_clinvar_data,founder_table){
         observeEvent(input$lib_prep_kit_disclaimer_table,{
             observeEvent(input$disclaimer_segdup_thresh,{
                 disclaimer_segdup_thresh<-input$disclaimer_segdup_thresh
@@ -334,31 +382,35 @@ server <- function(input, output) {
                     disclaimer_table<-disclaimer_table%>%filter(cannonical)
                 }
                 # add missing clinvar text
-                print(missing_clinvar_data)
+                #print(missing_clinvar_data)
                 disclaimer_table<-disclaimer_table%>%
                   left_join(missing_clinvar_data)%>%
+                  left_join(founder_table)%>%
                   mutate(in_disclaimer= factor(
-                    ifelse(!(is.na(missing_clinvar)) | !(is.na(exons_with_dup_level_above_thresh)),T,F)))
-                
-                print(disclaimer_table)
+                    ifelse(!(is.na(missing_clinvar)) | !(is.na(exons_with_dup_level_above_thresh)) | !(is.na(missing_founders)),T,F)))
+
+                #print(disclaimer_table)
                 disclaimer_text_segdup<-disclaimer_table%>%filter(in_disclaimer==TRUE & !is.na(exons_with_dup_level_above_thresh))%>%
                   mutate(as_text_segdup=glue('{gene_symbol}:{transcript_name}'))%>%
                   mutate(as_text_segdup=ifelse(!is.na(exons_with_dup_level_above_thresh),glue('{as_text_segdup}: Exons number: {exons_with_dup_level_above_thresh}'),as_text_segdup))
                 disclaimer_text_clinvar<-disclaimer_table%>%filter(in_disclaimer==TRUE & !is.na(missing_clinvar))%>%
                   mutate(as_text_clinvar=glue('{gene_symbol}:{transcript_name}'))%>%
                   mutate(as_text_clinvar=ifelse(!is.na(missing_clinvar),glue('{as_text_clinvar}: {missing_clinvar}'),as_text_clinvar))
-                  
+                disclaimer_text_founders<-disclaimer_table%>%filter(in_disclaimer==TRUE & !is.na(missing_founders))%>%
+                  mutate(as_text_founders=glue('{gene_symbol}'))%>%
+                  mutate(as_text_founders=glue('{as_text_founders}:{missing_founders}'))
                 dup_column_name<-glue('Exons with >10% with >{disclaimer_segdup_thresh*100}% homology')
                 disclaimer_table<-disclaimer_table%>%
                     rename('Add to disclaimer'=in_disclaimer,
                            !!sym(dup_column_name):=exons_with_dup_level_above_thresh,
                            'P/LP ClinVar variants not covered in target'=missing_clinvar,
+                           'Founder variatns not in target'=missing_founders,
                            'Gene name'=gene_symbol,
                            'Transcript name'=transcript_name)
                 
                 
                 output$disclaimer_table<-DT::renderDataTable(DT::datatable(disclaimer_table,
-                                                                           options=list(scrollX=F,pageLength=nrow(disclaimer_table),
+                                                                           options=list(scrollX=T,pageLength=nrow(disclaimer_table),
                                                                                         buttons = c('csv', 'excel'),
                                                                                         dom = 'Bfrtip'),
                                                                            extensions = 'Buttons',
@@ -368,7 +420,7 @@ server <- function(input, output) {
                 
                 output$disclaimer_text_segdup<-renderText(paste0(disclaimer_text_segdup%>%pull(as_text_segdup),collapse='<br/>'))
                 output$disclaimer_text_clinvar<-renderText(HTML(paste0(disclaimer_text_clinvar%>%pull(as_text_clinvar),collapse='<br/>')))
-                
+                output$disclaimer_text_founders<-renderText(HTML(paste0(disclaimer_text_founders%>%pull(as_text_founders),collapse='<br/>')))
             })
         })
     }
@@ -390,7 +442,8 @@ server <- function(input, output) {
                                                     filter = list(position = 'top', clear = FALSE))
         genes_seg_data<-update_seg_dup(gene_list_annotated)
         missing_clinvar_data<-update_missing_clinvar(gene_symbols)
-        update_disclaimer_table(gene_list_annotated,genes_seg_data,missing_clinvar_data)
+        founder_table<-update_founder_vars(gene_symbols)
+        update_disclaimer_table(gene_list_annotated,genes_seg_data,missing_clinvar_data,founder_table)
     })
     # per transcript ####
     observeEvent(input$gene_list_file,{
@@ -419,7 +472,8 @@ server <- function(input, output) {
         # add transcript names
         genes_seg_data<-update_seg_dup(gene_list_annotated)
         missing_clinvar_data<-update_missing_clinvar(gene_symbols)
-        update_disclaimer_table(gene_list_annotated,genes_seg_data,missing_clinvar_data)
+        founder_table<-update_founder_vars(gene_symbols)
+        update_disclaimer_table(gene_list_annotated,genes_seg_data,missing_clinvar_data,founder_table)
 
         
     })
