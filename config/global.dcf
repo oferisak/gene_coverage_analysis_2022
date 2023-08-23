@@ -1,4 +1,4 @@
-version: 0.10.2
+version: 0.10.3
 data_loading: FALSE
 data_loading_header: TRUE
 data_ignore:
@@ -12,7 +12,7 @@ libraries: stringr, lubridate, tidyr,dplyr,ggplot2,skimr,ggsci,DT,glue,gtsummary
 as_factors: FALSE
 tables_type: tibble
 attach_internal_libraries: FALSE
-cache_loaded_data:  TRUE
+cache_loaded_data: TRUE
 sticky_variables: NONE
 underscore_variables: TRUE
 cache_file_format: RData
