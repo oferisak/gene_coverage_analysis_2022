@@ -11,8 +11,8 @@ output:
 
 ```{r setup, include=FALSE}
 analysis_or_report='analysis'
-clinvar_file<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20220320.csv.gz'
-bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams/'
+clinvar_file<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20230608.txt.gz'
+bam_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/bam_analysis/input'
 
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
 knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
@@ -21,17 +21,24 @@ library(ProjectTemplate)
 setwd(project_dir)
 load.project()
 
-input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+#input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
 
+#main_output_folder<-glue('./output/enrichment_kit_comp_clinvar_coverage_analysis_2023-08-02-4')
 main_output_folder<-glue('./output/enrichment_kit_comp_clinvar_coverage_analysis_{Sys.Date()}')
 main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
+
+```
+
+```{r prep_clinvar_file}
 clinvar_bed<-fix_clinvar_ucsc_file(clinvar_file,main_output_folder,only_p_or_lp = T)
+clinvar_file<-clinvar_bed
 ```
 
 ```{r clinvar_coverage_bam_based}
 
 bam_analysis_df<-data.frame(input_bams_df)
 coverage_df<-NULL
+
 for (group_name in unique(input_bams_df$group_name)){
   message(glue('Analyzing {group_name}..'))
   #if (group_name!='idt'){next}
@@ -40,16 +47,21 @@ for (group_name in unique(input_bams_df$group_name)){
   for (sample_name in input_bams_df[input_bams_df$group_name==group_name,'sample_name']){
     message(glue('Analyzing {sample_name}..'))
     sample_output_folder<-glue('{group_output_folder}/{sample_name}')
-    if (!dir.exists(sample_output_folder)){dir.create(sample_output_folder)}
-    input_bam<-input_bams_df[input_bams_df$group_name==group_name & input_bams_df$sample_name==sample_name,'sample_path']
-    
-    genome_file<-prepare_genome_file(input_bam,output_folder = sample_output_folder)
-    
     clinvar_cov_file<-glue('{sample_output_folder}/{sample_name}_clinvar_cov_metrics.csv')
-    calculate_clinvar_coverage(clinvar_bed = clinvar_bed,
-                               bam_file = input_bam,
-                               genome_file = genome_file,
-                               clinvar_cov_file = clinvar_cov_file)
+    if (file.exists(clinvar_cov_file)){
+      message(glue('{clinvar_cov_file} already exists, will skip running coverage calculation'))
+    }else{
+      if (!dir.exists(sample_output_folder)){dir.create(sample_output_folder)}
+      input_bam<-input_bams_df[input_bams_df$group_name==group_name & input_bams_df$sample_name==sample_name,'sample_path']
+      
+      genome_file<-prepare_genome_file(input_bam,output_folder = sample_output_folder)
+      
+      calculate_clinvar_coverage(clinvar_bed = clinvar_bed,
+                                 bam_file = input_bam,
+                                 genome_file = genome_file,
+                                 clinvar_cov_file = clinvar_cov_file)
+      
+    }
     
     clinvar_coverage_df<-read_clinvar_coverage_file(clinvar_cov_file)
     clinvar_coverage_metrics<-clinvar_coverage_df%>%group_by(var_type)%>%summarize(n=n(),
@@ -63,6 +75,46 @@ for (group_name in unique(input_bams_df$group_name)){
     coverage_df<-coverage_df%>%bind_rows(clinvar_coverage_metrics)
   }
 }
+
+coverage_df_long<-
+  coverage_df%>%select(-sample_name)%>%
+  pivot_longer(-c(group_name,var_type,n))%>%
+  mutate(strip_title=glue('{var_type} ({n})'),
+         rate=value/n)
+
+not_covered_plot<-
+  coverage_df_long%>%
+  filter(name%in%c('x0_cov_vars'))%>%
+  ggplot(aes(x=group_name,y=rate,color=group_name))+
+  geom_point()+
+  scale_y_continuous(labels = scales::percent)+
+  facet_wrap(.~strip_title,scales='free')+
+  theme_minimal()+
+  labs(title='P/LP variants not covered')+
+  theme(legend.position = 'bottom')
+not_covered_plot
+ggsave(not_covered_plot,file=glue('{main_output_folder}/variants_not_covered_plot.jpg'),
+       device = 'jpg',
+       width = 20,height = 10,dpi=150,bg='white')
+
+variants_below_20x<-
+  coverage_df_long%>%
+  filter(name%in%c('below_x20_cov_vars'))%>%
+  ggplot(aes(x=group_name,y=rate,fill=group_name,color=group_name))+
+  #geom_boxplot(alpha=0.2,width=0.2)+
+  geom_point()+
+  scale_y_continuous(labels = scales::percent)+
+  facet_wrap(.~strip_title,scales='free')+
+  theme_minimal()+
+  labs(title='P/LP Variants with coverage below 20x')+
+  theme(legend.position = 'bottom')
+variants_below_20x
+ggsave(variants_below_20x,file=glue('{main_output_folder}/variants_below_20x.jpg'),
+       device = 'jpg',
+       width = 20,height = 10,dpi=150,bg='white')
+
+# z<-coverage_df%>%mutate(sample_name=stringr::str_replace(sample_name,'_GIAB_IL-TW',''))%>%
+#   pivot_wider(id_cols = c(sample_name,var_type,n),names_from = group_name,values_from = c(mean_depth,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars))
 coverage_file_name<-glue('{main_output_folder}/clinvar_coverage_analysis_results_{Sys.Date()}.tsv')
 write.table(coverage_df,file=coverage_file_name,sep='\t',row.names = F)
 
@@ -70,17 +122,17 @@ write.table(coverage_df,file=coverage_file_name,sep='\t',row.names = F)
 
 ```{r clinvar_coverage_bed_based}
 # Given a list of target bed files check how are the P/LP clinvar variants covered in the different regions
-target_regions<-list('idt_v2'='/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
-                     'agilent_v8'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed',
-                     'agilent_v8_regions'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_Regions_hg19.bed',
-                     'twist_exome_v2_plus'='/media/SSD/Bioinformatics/Databases/twist/hg19_Twist_Exome_2.0.2_plus_Comprehensive_Exome_Spike-in_targets_sorted.annotated.bed')
+target_regions<-list('idt_v2'='/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.pad50.bed',
+                     #'agilent_v8'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed',
+                     #'agilent_v8_regions'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_Regions_hg19.bed',
+                     'twist_exome_v2_plus'='/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.bed')
 targets_vs_clinvar_df<-NULL
 for (tr in names(target_regions)){
   message(glue('Analyzing {tr}'))
   tr_file<-target_regions[[tr]]
   clinvar_vs_target_file<-intersect_target_with_clinvar(clinvar_file = clinvar_file,
                                                         target_file = tr_file,
-                                                        only_p_or_lp = T,
+                                                        preprocess_input_clinvar = FALSE,
                                                         clinvar_vs_target_file = glue('{main_output_folder}/{tr}_vs_clinvar.tsv'))
   # read the output file
   clinvar_vs_target<-read_clinvar_vs_target_file(clinvar_vs_target_file)
@@ -88,11 +140,21 @@ for (tr in names(target_regions)){
 }
 
 # Summarize coverage
-not_covered_summary<-targets_vs_clinvar_df%>%group_by(target,var_type)%>%summarize(num_not_covered=sum(num_o_overlap==0))
-not_covered_summary%>%ggplot(aes(x=target,y=num_not_covered,fill=target))+
-  geom_col(alpha=0.5)+facet_wrap(var_type~.,scales='free')+
-  theme_minimal()+scale_fill_nejm()
-
+targets_vs_clinvar_df<-targets_vs_clinvar_df%>%left_join(targets_vs_clinvar_df%>%group_by(var_type)%>%summarize(n=n()))
+not_covered_summary<-targets_vs_clinvar_df%>%group_by(target,var_type,n)%>%
+  summarize(num_not_covered=sum(num_o_overlap==0))%>%
+  mutate(strip_name=glue('{var_type} ({n})'),
+         rate=num_not_covered/n)
+bed_coverage_plot<-
+  not_covered_summary%>%ggplot(aes(x=target,y=rate,fill=target))+
+  geom_col(alpha=0.5)+facet_wrap(strip_name~.,scales='free')+
+  theme_minimal()+scale_fill_nejm()+
+  scale_y_continuous(labels = scales::percent)+
+  labs(y='Number of P/LP variants not covered in target')+
+  theme(legend.position = 'bottom')
+ggsave(bed_coverage_plot,file=glue('{main_output_folder}/variants_outside_of_target_bed.jpg'),
+       device = 'jpg',
+       width = 20,height = 10,dpi=150,bg='white')
 ```
 
 

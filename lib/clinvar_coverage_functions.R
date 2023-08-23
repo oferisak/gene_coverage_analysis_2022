@@ -20,12 +20,16 @@ calculate_clinvar_coverage<-function(clinvar_bed,bam_file,genome_file,clinvar_co
   return(clinvar_cov_file)
 }
 
-intersect_target_with_clinvar<-function(clinvar_file,target_file,only_p_or_lp=T,clinvar_vs_target_file){
-  if (only_p_or_lp){
+intersect_target_with_clinvar<-function(clinvar_file,target_file,clinvar_vs_target_file,preprocess_input_clinvar=FALSE){
+  if (preprocess_input_clinvar){
     awk_command<-'awk -F\'\\t\' \'{print $1"\\t"$2"\\t"$3"\\t"$14"\\t"$18}\''
     clinvar_coverage_command<-glue('gunzip -c {clinvar_file} | {awk_command} | grep "Pathogenic\\|Likely pathogenic" | bedtools intersect -c -a - -b {target_file} > {clinvar_vs_target_file}')
   }else{
-    clinvar_coverage_command<-glue('gunzip -c {clinvar_file} | {awk_command} | bedtools intersect -c -a - -b {target_file} > {clinvar_vs_target_file}')
+    if (grepl('gz',clinvar_file)){
+      clinvar_coverage_command<-glue('gunzip -c {clinvar_file} | bedtools intersect -c -a - -b {target_file} > {clinvar_vs_target_file}')
+    }else{
+      clinvar_coverage_command<-glue('bedtools intersect -c -a {clinvar_file} -b {target_file} > {clinvar_vs_target_file}')
+    }
   }
   message(glue('Running {clinvar_coverage_command}'))
   system(clinvar_coverage_command)

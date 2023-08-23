@@ -20,21 +20,26 @@ library(ProjectTemplate)
 setwd(project_dir)
 load.project()
 
-input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+#input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+```
+
+```{r input_def}
+# Setup Variables ####
+#target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz'
+target_region<-'./data/target_intervals/HPD_v4_target_hg19.txt.bed'
+#reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
+reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
+#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/mody_panel.csv'
+
+
 ```
 
 ```{r calculate_bam_coverage_with_bedtools}
-# Setup Variables ####
-#target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz'
-target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz'
-reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
-
-#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/mody_panel.csv'
 
 main_output_folder<-glue('./output/bam_analysis_{Sys.Date()}')
 if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
 
-bam_analysis_df<-data.frame(input_bams_df,genome_file=NA,coverage_output=NA)
+bam_analysis_df<-data.frame(input_bams_df,genome_file='',coverage_output='')
 
 for (group_name in unique(input_bams_df$group_name)){
   message(glue('Analyzing {group_name}..'))
@@ -52,8 +57,7 @@ for (group_name in unique(input_bams_df$group_name)){
     # prepare the input target region bed file
     # this file is generated using the ucsc table browser - generating a bed file with the CODING exons
     sorted_target_bed<-sort_input_bed_file(target_region,sample_output_folder,genome_file)
-    
-    
+  
     # Run the bedtools coverage analysis #### 
     coverage_ouput<-run_bedtools_coverage_by_bam(input_bam,genome_file,sorted_target_bed,sample_output_folder)
     bam_analysis_df<-bam_analysis_df%>%rows_update(data.frame(group_name=group_name,
@@ -73,8 +77,8 @@ bam_analysis_df_file<-glue('{main_output_folder}/bam_analysis_table.csv')
 bam_analysis_df<-readr::read_delim(bam_analysis_df_file)
 cov_per_exon_all_groups<-NULL
 cov_per_transcript_all_groups<-NULL
-#for (i in 1:nrow(bam_analysis_df)){
-for (i in c(1,7)){
+for (i in 1:nrow(bam_analysis_df)){
+#for (i in c(1,7)){
   bam_analysis_row<-slice(bam_analysis_df,i)
   group_name<-bam_analysis_row%>%pull(group_name)
   sample_name<-bam_analysis_row%>%pull(sample_name)
@@ -109,76 +113,58 @@ map(unique(cov_per_transcript_per_group$group_name),write_group_coverage_ref)
 
 ```
 
-# Generate segmental duplications vs exons file
+go over the target file and output problematic regions for each input file
 
-```{r generate_seg_dup_vs_exons}
-# merge segmental duplications and use the maximal dup level as the annotation
-# the seg dups file should be in the format: chr star end dup_perc
-seg_dups_file<-'/media/SSD/Bioinformatics/Databases/hg19/genomicSuperDups_hg19_20220414.bed.gz'
-seg_dups_merged<-'/media/SSD/Bioinformatics/Databases/hg19/genomicSuperDups_hg19_20220414_merged.bed'
-system(glue('bedtools sort -i {seg_dups_file} | bedtools merge -c 4 -o max > {seg_dups_merged}'))
-
-exons_db<-read.table('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz',header=F,sep='\t')
-colnames(exons_db)<-c('chr','exon_start','exon_end','gene_symbol','transcript_id','exon_num')
-exons_db <- exons_db %>% mutate(exon_start = as.numeric(exon_start),
-                                exon_end = as.numeric(exon_end))
-
-
-exons_file<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz'
-#annot_file<-'/media/SSD/Bioinformatics/Databases/hg38/segmental_duplications/genomicSuperDups_hg38_20211115_merged.bed'
-annot_file<-'/media/SSD/Bioinformatics/Databases/hg19/genomicSuperDups_hg19_20220414_merged.bed'
-annotation_colnames<-c('ann_chr','ann_start','ann_end','dup_perc')
-
-intersect_output<-bedtools_intersect(exons_file,annot_file,annotation_colnames,transcript_id_parsed = F)
-intersect_output<-intersect_output%>%
-  mutate(transcript_name=stringr::str_extract(interval_name,'(.+)_(exon|cds)')%>%stringr::str_replace('_(exon|cds)',''),
-         exon_num=as.numeric(stringr::str_extract(interval_name,'(exon|cds)_\\d+')%>%stringr::str_extract('\\d+')))
-
-intersect_output<-intersect_output%>%mutate(dup_perc=round(dup_perc,3))
-# for each exon get the maximal level of duplication
-intersect_output<-intersect_output%>%group_by(transcript_name,exon_num)%>%top_n(n=1,wt=dup_perc)%>%
-  distinct(transcript_name,chr,start,end,exon_num,.keep_all = T)
-
-exons_vs_segdup<-intersect_output%>%group_by(transcript_name,start,end,exon_num,overlap)%>%
-  top_n(1,dup_perc)%>%
-  distinct(gene_symbol,transcript_id,start,end,exon_num,.keep_all = T)
-
-exons_vs_segdup<-intersect_output%>%ungroup()%>%
-  group_by(transcript_name,chr,start,end,exon_num,dup_perc)%>%
-  summarize(overall_overlap=sum(overlap))%>%
-  mutate(exon_len=end-start,overlap_perc=overall_overlap/exon_len)%>%
-  ungroup()%>%
-  group_by(transcript_name)%>%arrange(transcript_name,exon_num)
-summary(exons_vs_segdup)
-
-write.table(exons_vs_segdup,file=sprintf('./output/accessory_data/refseq_hg19_curated_cds_vs_segdup.csv'),row.names = F,sep ='\t')
-```
-
-
-```{r bed_coverage_analysis}
-main_output_folder<-glue('./output/bed_analysis_{Sys.Date()}')
-if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
-
-
-target_region<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/target_regions/refseq_select_cds_20220123.bed'
-
-metrics<-NULL
-
-for (i in 1:nrow(input_beds_df)){
-  input_bed<-input_beds_df%>%slice(i)
-  input_bed_group_name<-input_bed%>%pull(group_name)
-  input_bed_path<-input_bed%>%pull(sample_path)
-  input_bed_name<-input_bed%>%pull(sample_name)
-  message(glue('Analyzing {input_bed_name}: {input_bed_path}'))
-  bed_coverage_output<-run_bedtools_coverage_by_bed(reference_bed = target_region,bed_to_test = input_bed_path,output_folder=main_output_folder,bed_name = input_bed_name)
-  #bed_coverage<-read_bed_coverage_file(bed_coverage_output)
-  cov_per_transcript<-summarize_coverage_per_transcript(bed_coverage_output,output_path=glue('{main_output_folder}/{input_bed_name}/{input_bed_name}_cov_per_transcript.csv'))
-  #bed_per_transcript_summary<-bed_per_transcript_summary%>%bind_rows(data.frame(target=output_name,))
-  cov_metrics<-get_target_bed_metrics(cov_per_transcript)
-  metrics<-metrics%>%bind_rows(data.frame(group=input_bed_group_name,target_name=input_bed_name,cov_metrics))
+```{r analyze_coverage_by_target}
+output_folder_to_parse<-'./output/bam_analysis_2023-08-20'
+bam_analysis_def_table<-readr::read_delim(glue('{output_folder_to_parse}/bam_analysis_table.csv'))
+threshs<-c(1,10,20)
+all_cov_output<-NULL
+per_target_cov_output<-NULL
+for (i in 1:nrow(bam_analysis_def_table)){
+  a_cov_output<-NULL
+  pt_cov_output<-NULL
+  group_name<-bam_analysis_def_table$group_name[i]
+  sample_name<-bam_analysis_def_table$sample_name[i]
+  bam_cov_file<-bam_analysis_def_table$coverage_output[i]
+  bam_cov<-readr::read_delim(bam_cov_file,delim = '\t',col_names = c('chr','start','end','depth','num_bases','total_bases_in_target','percent_of_target'))
+  all_cov<-bam_cov%>%filter(chr=='all')
+  colnames(all_cov)<-c('all','depth','num_bases','total_bases_in_target','percent_of_entire_target','X1','X2')
+  
+  bam_cov<-bam_cov%>%filter(chr!='all')
+  for (thresh in threshs){
+    
+    bases_col_name<-glue('bases_below_{thresh}x')
+    pct_col_name<-glue('pct_below_{thresh}x')
+    # All target analysis
+    all_below_thresh<-all_cov%>%
+      filter(depth<thresh)%>%
+      group_by(all)%>%
+      summarize(!!sym(bases_col_name):=sum(num_bases),
+                !!sym(pct_col_name):=sum(percent_of_entire_target))
+  
+    # Per target analysis
+    below_thresh<-bam_cov%>%
+      filter(depth<thresh)%>%
+      group_by(chr,start,end,total_bases_in_target)%>%
+      summarize(!!sym(bases_col_name):=sum(num_bases),
+                !!sym(pct_col_name):=sum(percent_of_target))
+    if(is.null(pt_cov_output)){
+      pt_cov_output<-below_thresh 
+      a_cov_output<-all_below_thresh
+    }else{
+      pt_cov_output<-pt_cov_output%>%right_join(below_thresh)%>% replace(is.na(.), 0)
+      a_cov_output<-a_cov_output%>%right_join(all_below_thresh)%>%replace(is.na(.), 0)
+    }
+  }
+  a_cov_output<-a_cov_output%>%mutate(sample=sample_name,group=group_name)
+  pt_cov_output<-pt_cov_output%>%mutate(sample=sample_name,group=group_name)
+per_target_cov_output<-per_target_cov_output%>%bind_rows(pt_cov_output)
+all_cov_output<-all_cov_output%>%bind_rows(a_cov_output)
 }
-metrics
+all_cov_output
 
-
+xlsx::write.xlsx(as.data.frame(all_cov_output),sheetName = 'All targets coverage',row.names = FALSE,file=glue('{output_folder_to_parse}/target_coverage_analysis.{Sys.Date()}.xls'))
+xlsx::write.xlsx(as.data.frame(per_target_cov_output),sheetName = 'Per target coverage',row.names = FALSE,file=glue('{output_folder_to_parse}/target_coverage_analysis.{Sys.Date()}.xls'),append = TRUE)
 
 ```

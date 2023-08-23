@@ -1,4 +1,4 @@
-read_input_bam_files<-function(){
+read_input_bam_files<-function(bam_folder=NA){
   if (analysis_or_report=='report'){return()}
   if (is.na(bam_folder)){
     bam_folder<-'./data/bam_analysis/input'

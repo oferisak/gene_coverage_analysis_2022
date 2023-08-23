@@ -167,6 +167,7 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                                   multiple = FALSE,
                                                   accept = c(".csv",".tsv",'.xls','.xlsx')),
                                         selectizeInput('gene_list_selection',choices = NULL,selected=NULL,multiple=TRUE,label='Gene List'),
+                                        div(verbatimTextOutput(outputId = 'num_of_parsed_genes'),style='font-size:125%;'),
                                         div(DT::dataTableOutput(outputId = 'gene_list_table'), 
                                             style='font-size:125%;'))
                                     ),
@@ -221,11 +222,15 @@ server <- function(input, output) {
     update_gene_list<-function(gene_list){
         # fix gene names
         # first check if any of the provided gene symbols is not found in the refseq gene name table
+        original_gene_list<-gene_list
+        print(original_gene_list%>%pull(gene_symbol))
         gene_list_genes_not_in_refseq<-gene_list%>%
             filter(!gene_symbol%in%refseq_to_gene$gene_symbol)%>%
             select(provided_gene_symbol=gene_symbol)%>%
             left_join(standard_genenames_table,by=c('provided_gene_symbol'='prev_symbol'))%>%
-            filter(!is.na(approved_gene_symbol))# remove those that are not found in both refseq and the standard gene table (bad genes)
+            filter(is.na(approved_gene_symbol))# remove those that are not found in both refseq and the standard gene table (bad genes)
+        print(gene_list_genes_not_in_refseq)
+        genes_not_in_refseq<-gene_list_genes_not_in_refseq%>%pull(provided_gene_symbol)
         # then, for the genes that are found in the standard gene names table, change the gene symbol to the approved name 
         gene_list<-gene_list%>%
             mutate(gene_name_provided=gene_symbol)%>%
@@ -233,6 +238,7 @@ server <- function(input, output) {
             mutate(gene_symbol=ifelse(gene_symbol%in%gene_list_genes_not_in_refseq$provided_gene_symbol,
                                       gene_list_genes_not_in_refseq%>%filter(provided_gene_symbol==gene_symbol)%>%slice(1)%>%pull(approved_gene_symbol),#if there are more than one approved gene symbol for the previous symbol, pick the first one.
                                       gene_symbol))
+        output$num_of_parsed_genes<-renderText({glue('Out of {nrow(original_gene_list)} input genes, identified {nrow(gene_list%>%filter(!is.na(gene_symbol)))} genes. could not find: {paste0(genes_not_in_refseq,collapse=", ")}')})
         return(gene_list)
     }
     
@@ -440,6 +446,7 @@ server <- function(input, output) {
                                                     selection='single',
                                                     rownames= FALSE,
                                                     filter = list(position = 'top', clear = FALSE))
+        
         genes_seg_data<-update_seg_dup(gene_list_annotated)
         missing_clinvar_data<-update_missing_clinvar(gene_symbols)
         founder_table<-update_founder_vars(gene_symbols)
@@ -453,9 +460,8 @@ server <- function(input, output) {
         }else{
             gene_list<-readr::read_delim(input$gene_list_file$datapath,col_names = c('gene_symbol'))
         }
-        
+        original_gene_list<-gene_list
         gene_list<-update_gene_list(gene_list)
-
         updateSelectizeInput(inputId = 'gene_list_selection', choices = all_gene_symbols,selected=gene_list$gene_symbol, server = TRUE)
         
         #gene_list<-gene_list%>%mutate(gene_found_in_reference=gene_symbol%in%refseq_to_gene$gene_name)

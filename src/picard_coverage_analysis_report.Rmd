@@ -10,13 +10,15 @@ output:
 ---
 ```{r initial_setup,include=F}
 analysis_or_report='report'
-picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_picard_coverage_analysis_2022-06-19/'
+picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/picard_coverage_analysis_2023-08-20/'
 ```
 
 
 ```{r render_report,eval=F,echo=F}
 library(rmarkdown)
-render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/picard_coverage_analysis_report.Rmd', output_dir = picard_analysis_output_folder,output_file = glue('enrichment_kit_comp_picard_coverage_report.{Sys.Date()}.html'),quiet = F)
+render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/picard_coverage_analysis_report.Rmd', 
+       output_dir = picard_analysis_output_folder,
+       output_file = glue('picard_coverage_report.{Sys.Date()}.html'),quiet = F)
 ```
 
 ```{r setup, include=FALSE,warning=F,message=F}
@@ -31,6 +33,7 @@ load.project()
 ```
 
 ```{r load_data,message=F}
+message(glue('Parsing PICARD output: {picard_analysis_output_folder}'))
 coverage_df<-parse_picard_output_folder(picard_analysis_output_folder)%>%
   mutate(group_name=factor(group_name),
          sample_name=factor(sample_name),

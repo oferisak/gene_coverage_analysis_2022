@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 
+analysis_or_report<-'analysis'
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
 knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
 knitr::opts_chunk$set(echo = F)
@@ -20,10 +21,7 @@ load.project()
 main_output_folder<-glue('./output/bed_coverage_analysis_{Sys.Date()}')
 main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 
-input_beds<-c('Covered'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Covered.bed',
-              'Regions'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Regions.bed',
-              'AllTracks'='/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_AllTracks.bed')
-
+input_beds<-c('HPD_v4'='./data/target_intervals/HPD_v4_target_hg19.txt.bed')
 
 target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz'
 
@@ -40,7 +38,5 @@ for (input_bed_name in names(input_beds)){
   metrics<-metrics%>%bind_rows(data.frame(target_name=input_bed_name,cov_metrics))
 }
 metrics
-
-
 
 ```
