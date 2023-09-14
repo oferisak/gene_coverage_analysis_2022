@@ -3,11 +3,14 @@ picard_path<-'/media/SSD/Bioinformatics/Tools/Picard/picard.jar'
 fix_target_regions<-function(target_regions,refernce_dict,main_output_folder){
   new_target_regions<-c()
   # parse dict file to get all the chromosomes from it
-  dict_chrs<-readr::read_delim(reference_dict)
-
+  dict_chrs<-readr::read_delim(reference_dict,skip = 1,
+                               delim='\t',
+                               col_select = c(2,1),
+                               col_names = c('sq','chr'))
+  
   new_target_regions_folder<-glue('{main_output_folder}/target_regions')
   dir.create(new_target_regions_folder)
-  chrs_in_dict<-dict_chrs%>%pull(`VN:1.0`)%>%stringr::str_replace('SN:','')
+  chrs_in_dict<-stringr::str_replace(dict_chrs%>%pull(chr),'SN:','')
   for (target_region in target_regions){
     message(glue('{target_region}'))
     base_target_region_name<-basename(target_region)

@@ -25,7 +25,7 @@ load.project()
 
 # set whether you want to continue the run in the same dir (skipping files already created) or start the analysis in a new dir
 #main_output_folder<-glue('./output/picard_coverage_analysis_{Sys.Date()}')
-main_output_folder<-glue('./output/picard_coverage_analysis_{Sys.Date()}')
+main_output_folder<-glue('./output/sequentify_acmg_picard_coverage_analysis_2023-09-03')
 # if you want a new dir:
 main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 
@@ -35,7 +35,8 @@ main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 ```
 
 ```{r bam_coverage_analysis_picard}
-target_regions<-c('./data/target_intervals/HPD_v4_target_hg19.txt.bed')
+#target_regions<-c('/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed')
+target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz')
 # target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz',
 #                   '/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220414.bed.gz',
 #                   '/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
@@ -52,6 +53,9 @@ per_target_analysis_req<-c('Y')
 
 reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.fa'
 reference_dict<-'/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.dict'
+
+# reference_fasta<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.fa'
+# reference_dict<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.dict'
 
 # record the different variables
 log_file<-glue('{main_output_folder}/picard_analysis_log_file.txt')

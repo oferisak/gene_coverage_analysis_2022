@@ -26,17 +26,18 @@ load.project()
 ```{r input_def}
 # Setup Variables ####
 #target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz'
-target_region<-'./data/target_intervals/HPD_v4_target_hg19.txt.bed'
+target_region<-'/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed'
 #reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
-reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
+reference_fasta<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.fa'
 #gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/mody_panel.csv'
 
 
 ```
 
 ```{r calculate_bam_coverage_with_bedtools}
+remove_duplicates=FALSE
+main_output_folder<-glue('./output/sequentify_acmg_bam_analysis_with_duplicates_{Sys.Date()}')
 
-main_output_folder<-glue('./output/bam_analysis_{Sys.Date()}')
 if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
 
 bam_analysis_df<-data.frame(input_bams_df,genome_file='',coverage_output='')
@@ -51,15 +52,15 @@ for (group_name in unique(input_bams_df$group_name)){
     sample_output_folder<-glue('{group_output_folder}/{sample_name}')
     if (!dir.exists(sample_output_folder)){dir.create(sample_output_folder)}
     input_bam<-input_bams_df[input_bams_df$group_name==group_name & input_bams_df$sample_name==sample_name,'sample_path']
+    genome_file<-prepare_genome_file(input_bam,sample_output_folder)
+    sorted_target_bed<-sort_input_bed_file(target_region,sample_output_folder,genome_file)
     # Prepare the data for coverage analsysis ####
     # prepare the genome file using the given bam file (required by bedtools)
-    genome_file<-prepare_genome_file(input_bam,sample_output_folder)
     # prepare the input target region bed file
     # this file is generated using the ucsc table browser - generating a bed file with the CODING exons
-    sorted_target_bed<-sort_input_bed_file(target_region,sample_output_folder,genome_file)
   
     # Run the bedtools coverage analysis #### 
-    coverage_ouput<-run_bedtools_coverage_by_bam(input_bam,genome_file,sorted_target_bed,sample_output_folder)
+    coverage_ouput<-run_bedtools_coverage_by_bam(input_bam,genome_file,sorted_target_bed,sample_output_folder,remove_duplicates=remove_duplicates)
     bam_analysis_df<-bam_analysis_df%>%rows_update(data.frame(group_name=group_name,
                                                               sample_name=sample_name,
                                                               genome_file=genome_file,
@@ -116,9 +117,10 @@ map(unique(cov_per_transcript_per_group$group_name),write_group_coverage_ref)
 go over the target file and output problematic regions for each input file
 
 ```{r analyze_coverage_by_target}
-output_folder_to_parse<-'./output/bam_analysis_2023-08-20'
+output_folder_to_parse<-main_output_folder
+
 bam_analysis_def_table<-readr::read_delim(glue('{output_folder_to_parse}/bam_analysis_table.csv'))
-threshs<-c(1,10,20)
+threshs<-c(1,10,20,50)
 all_cov_output<-NULL
 per_target_cov_output<-NULL
 for (i in 1:nrow(bam_analysis_def_table)){
@@ -132,6 +134,10 @@ for (i in 1:nrow(bam_analysis_def_table)){
   colnames(all_cov)<-c('all','depth','num_bases','total_bases_in_target','percent_of_entire_target','X1','X2')
   
   bam_cov<-bam_cov%>%filter(chr!='all')
+  # per-target-mean-coverage
+  pt_mean_cov<-bam_cov%>%group_by(chr,start,end)%>%summarize(min_cov=min(depth),max_cov=max(depth),mean_cov=sum(depth*percent_of_target))
+  a_mean_cov<-all_cov%>%summarize(min_cov=min(depth),max_cov=max(depth),mean_cov=sum(depth*percent_of_entire_target))
+  
   for (thresh in threshs){
     
     bases_col_name<-glue('bases_below_{thresh}x')
@@ -157,8 +163,8 @@ for (i in 1:nrow(bam_analysis_def_table)){
       a_cov_output<-a_cov_output%>%right_join(all_below_thresh)%>%replace(is.na(.), 0)
     }
   }
-  a_cov_output<-a_cov_output%>%mutate(sample=sample_name,group=group_name)
-  pt_cov_output<-pt_cov_output%>%mutate(sample=sample_name,group=group_name)
+  a_cov_output<-a_cov_output%>%mutate(sample=sample_name,group=group_name)%>%bind_cols(a_mean_cov)
+  pt_cov_output<-pt_cov_output%>%mutate(sample=sample_name,group=group_name)%>%left_join(pt_mean_cov)
 per_target_cov_output<-per_target_cov_output%>%bind_rows(pt_cov_output)
 all_cov_output<-all_cov_output%>%bind_rows(a_cov_output)
 }

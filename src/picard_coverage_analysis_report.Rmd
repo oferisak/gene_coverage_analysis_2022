@@ -10,7 +10,7 @@ output:
 ---
 ```{r initial_setup,include=F}
 analysis_or_report='report'
-picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/picard_coverage_analysis_2023-08-20/'
+picard_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/sequentify_acmg_picard_coverage_analysis_2023-09-03'
 ```
 
 

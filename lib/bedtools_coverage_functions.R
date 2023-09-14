@@ -9,6 +9,7 @@ sort_input_bed_file<-function(input_bed_file,output_folder,genome_file){
   input_bed_fixed<-input_bed_fixed%>%group_by(X1)%>%arrange(X2)
   input_bed_fixed<-input_bed_fixed[order(match(input_bed_fixed$X1,genome$X1)),]
   input_bed_fixed_file<-glue('{output_folder}/{bed_file_name}.sorted.bed')
+  options(scipen=10)
   write.table(input_bed_fixed,file=input_bed_fixed_file,row.names = F,col.names = F,sep='\t',quote = F)
   # sort_command<- ifelse(grepl('.gz',input_bed),
   #                       sprintf('gunzip -c %s',input_bed),
@@ -33,14 +34,19 @@ prepare_genome_file<-function(input_bam,output_folder){
   return(genome_file)
 }
 
-run_bedtools_coverage_by_bam<-function(input_bam,genome_file,target_region,output_folder){
+run_bedtools_coverage_by_bam<-function(input_bam,genome_file,target_region,output_folder,remove_duplicates=TRUE){
   bam_file_name<-basename(input_bam)%>%stringr::str_replace('.bam','')
   coverage_output<-glue('{output_folder}/{bam_file_name}.coverage')
   if (file.exists(coverage_output)){
     message(glue('{bam_file_name} already has a coverage file, will skip re-calculation.'))
     return(coverage_output)
   }
-  bed_coverage_command<-glue('bedtools bamtobed -i {input_bam} | bedtools coverage -g {genome_file} -a {target_region} -b - -hist -sorted > {coverage_output}')
+  #bed_coverage_command<-glue('bedtools bamtobed -i {input_bam} | bedtools coverage -g {genome_file} -a {target_region} -b - -hist -sorted > {coverage_output}')
+  if (remove_duplicates){
+    bed_coverage_command<-glue('samtools view -uF 0x400 {input_bam} | bedtools coverage -hist -b - -a {target_region} > {coverage_output}')
+  }else{
+    bed_coverage_command<-glue('bedtools bamtobed -i {input_bam} | bedtools coverage -g {genome_file} -a {target_region} -b - -hist -sorted > {coverage_output}')
+  }
   message(sprintf('Running: %s',bed_coverage_command))
   info(logger,bed_coverage_command)
   system(bed_coverage_command)

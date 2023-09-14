@@ -137,7 +137,7 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                 /* navbar (rest of the header) */
                                 .skin-blue .main-header .navbar {
                                 background-color: #87a86f;
-                                }
+                                }gene_list
                                 /* body */
                                 .content-wrapper, .right-side {
                                 background-color: #f5fbf8;
