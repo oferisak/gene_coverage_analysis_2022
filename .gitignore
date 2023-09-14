@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+data/
+apps/gene_list_coverage_app/accessory_data
+apps/gene_list_coverage_app/data_for_prepare
+*/*.html
+*/*.bed
+*/*.gz
+output/
+logs/
+cache/
