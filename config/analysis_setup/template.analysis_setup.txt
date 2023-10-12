@@ -1,0 +1,5 @@
+param	value	options	comment
+bam_folder			should not be used, the coverage script automatically uses ./data/bam_analysis_input
+main_output_folder_prefix	test_run		
+target_regions	refseq_curated_cds_20220414		comma separated list of targets to consider (see input_files.txt)
+per_target_analysis	N	Y,N	comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target

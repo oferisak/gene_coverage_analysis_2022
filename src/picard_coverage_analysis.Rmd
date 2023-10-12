@@ -10,61 +10,45 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-analysis_or_report='analysis'
-bam_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/bam_analysis/input/'
-#bam_folder<-'/media/SSD/Bioinformatics/Projects/enrichment_kit_comparison/downsampled_bams/'
-
+analysis_setup_file<-'./config/analysis_setup/template.analysis_setup.txt'
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
-knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
 library(ProjectTemplate)
 setwd(project_dir)
 load.project()
+```
 
-#input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+```{r intialize}
+input_files<-readr::read_delim('./config/input_files.txt',delim='\t')
+# analysis_setup
+analysis_setup<-readr::read_delim(analysis_setup_file,delim='\t')
+# bam folder
+bam_folder<-analysis_setup%>%filter(param=='bam_folder')%>%pull(value)
+input_bams_df<-read_input_bam_files(bam_folder)
+# target regions
+target_regions_names<-analysis_setup%>%filter(param=='target_regions')%>%pull(value)%>%strsplit(',')%>%unlist()
+target_regions_table<-input_files%>%inner_join(data.frame(name=target_regions_names))
+target_regions<-target_regions_table%>%pull(file)
+target_reference_regions<-target_regions_table%>%pull(ref)
+per_target_analysis_req<-analysis_setup%>%filter(param=='per_target_analysis')%>%pull(value)%>%strsplit(',')%>%unlist()
+# reference regions
+reference_fasta<-input_files%>%filter(type=='reference_fasta')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
+reference_dict<-input_files%>%filter(type=='reference_dict')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
+# refseq transcript to gene name
+refseq2gene<-parse_refseq_transcript_to_gene_name()
 
-# set whether you want to continue the run in the same dir (skipping files already created) or start the analysis in a new dir
-#main_output_folder<-glue('./output/picard_coverage_analysis_{Sys.Date()}')
-main_output_folder<-glue('./output/sequentify_acmg_picard_coverage_analysis_2023-09-03')
-# if you want a new dir:
-main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
+# prep output
+main_output_prefix<-analysis_setup%>%filter(param=='main_output_folder_prefix')%>%pull(value)
+main_output_folder<-glue('./output/{main_output_prefix}.picard_coverage_analysis.{Sys.Date()}')
+if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
 
-# filter only agilent files
-#input_bams_df<-input_bams_df%>%filter(group_name=='agilent')
+# copy analysis setup to the ouput folder
+system(glue('cp {analysis_setup_file} {main_output_folder}'))
 
 ```
 
 ```{r bam_coverage_analysis_picard}
-#target_regions<-c('/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed')
-target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz')
-# target_regions<-c('/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_select_cds_20220307.bed.gz',
-#                   '/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220414.bed.gz',
-#                   '/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
-#                   '/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed',
-#                   '/media/SSD/Bioinformatics/Databases/twist/hg19_Twist_Exome_2.0.2_plus_Comprehensive_Exome_Spike-in_targets_sorted.annotated.bed',
-#                   '/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/target_intervals/idt_v2_twist_exome2_plus_agilent_v8_intersect.bed')
-per_target_analysis_req<-c('Y')
-#per_target_analysis_req<-c('Y','Y','N','N','N','N')
-
-# Agilent targets
-# target_regions<-c('/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Covered.bed',
-#                   '/media/SSD/Bioinformatics/Databases/agilent/SureSelectXT HS Human All Exon V8/S33266340/S33266340_Regions.bed')
-#target_regions<-c('./data/target_intervals/HPD_v4_target.txt.bed')
-
-reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.fa'
-reference_dict<-'/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.dict'
-
-# reference_fasta<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.fa'
-# reference_dict<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.dict'
-
-# record the different variables
-log_file<-glue('{main_output_folder}/picard_analysis_log_file.txt')
-if (!file.exists(log_file)){
-  add_to_log(log_file,'target_regions',target_regions)
-  add_to_log(log_file,'reference_fasta',reference_fasta)
-  add_to_log(log_file,'input_bams',input_bams_df)
-}
-
 # fix target regions - remove all chromosomes found in the region and not in the dict
 target_regions<-fix_target_regions(target_regions,reference_dict,main_output_folder)
 
