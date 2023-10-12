@@ -4,8 +4,10 @@ hg19_fa	hg19	/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.fa	refe
 hg19_dict	hg19	/media/SSD/Bioinformatics/Databases/dragen/hg19/hg19_dragen.dict	reference_dict
 sequentify_hg38	hg38	/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed	target_region
 refseq_curated_cds_20220414	hg19	/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220414.bed.gz	target_region
-idt	hg19	/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed	target_region
+idt_v2_hg19	hg19	/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed	target_region
 agilent_v8	hg19	/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed	target_region
 hg38_fa	hg38	/media/SSD/Bioinformatics/Databases/hg38/hg38.fa	reference_fasta
 hg38_dict	hg38	/media/SSD/Bioinformatics/Databases/hg38/hg38.dict	reference_dict
 clinvar_snv_20230608	hg19	/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20230608.txt.gz	clinvar_snv
+idt_v2_hg19_pad50	hg19	/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.pad50.bed	target_region
+twist_exome2_hg19_pad50	hg19	/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.bed	target_region

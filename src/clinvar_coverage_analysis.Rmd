@@ -28,6 +28,8 @@ load.project()
 input_files<-readr::read_delim('./config/input_files.txt',delim='\t')
 # analysis_setup
 analysis_setup<-readr::read_delim(analysis_setup_file,delim='\t')
+# analysis type
+analysis_type<-analysis_setup%>%filter(param=='analysis_type')%>%pull(value)
 # bam folder
 bam_folder<-analysis_setup%>%filter(param=='bam_folder')%>%pull(value)
 input_bams_df<-read_input_bam_files(bam_folder)
@@ -49,7 +51,11 @@ refseq2gene<-parse_refseq_transcript_to_gene_name()
 # prep output
 main_output_prefix<-analysis_setup%>%filter(param=='main_output_folder_prefix')%>%pull(value)
 main_output_folder<-glue('./output/{main_output_prefix}.clinvar_coverage_analysis.{Sys.Date()}')
+bed_analysis_output_folder<-glue('{main_output_folder}/bed_analysis')
+bam_analysis_output_folder<-glue('{main_output_folder}/bam_analysis')
 if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
+if (!dir.exists(bed_analysis_output_folder) & analysis_type%in%c('bed','both')){dir.create(bed_analysis_output_folder)}
+if (!dir.exists(bam_analysis_output_folder) & analysis_type%in%c('bam','both')){dir.create(bam_analysis_output_folder)}
 
 # copy analysis setup to the ouput folder
 system(glue('cp {analysis_setup_file} {main_output_folder}'))
@@ -61,6 +67,36 @@ clinvar_bed<-fix_clinvar_ucsc_file(clinvar_file,main_output_folder,only_p_or_lp 
 clinvar_file<-clinvar_bed
 ```
 
+```{r clinvar_coverage_bed_based}
+# Given a list of target bed files check how are the P/LP clinvar variants covered in the different regions
+targets_vs_clinvar_df<-NULL
+for (i in 1:nrow(target_regions_table)){
+  tr<-target_regions_table%>%slice(i)%>%pull(name)
+  tr_file<-target_regions_table%>%slice(i)%>%pull(file)
+  message(glue('Analyzing {tr}'))
+  clinvar_vs_target_file<-intersect_target_with_clinvar(clinvar_file = clinvar_file,
+                                                        target_file = tr_file,
+                                                        preprocess_input_clinvar = FALSE,
+                                                        clinvar_vs_target_file = glue('{bed_analysis_output_folder}/{tr}_vs_clinvar.tsv'))
+  # read the output file
+  clinvar_vs_target<-read_clinvar_vs_target_file(clinvar_vs_target_file)
+  targets_vs_clinvar_df<-targets_vs_clinvar_df%>%bind_rows(clinvar_vs_target%>%mutate(target=tr,target_file=tr_file,.before=1))
+}
+# Save all variants not covered in bed
+targets_vs_clinvar_df_not_coverd<-targets_vs_clinvar_df%>%filter(num_o_overlap==0)
+write.table(targets_vs_clinvar_df_not_coverd,file=glue('{bed_analysis_output_folder}/clinvar_not_covered_in_bed.{Sys.Date()}.txt'),sep='\t',row.names = F)
+
+# Summarize coverage
+targets_vs_clinvar_df<-targets_vs_clinvar_df%>%left_join(targets_vs_clinvar_df%>%group_by(var_type)%>%summarize(n=n()))
+not_covered_summary<-targets_vs_clinvar_df%>%group_by(target,var_type,n)%>%
+  summarize(num_not_covered=sum(num_o_overlap==0))%>%
+  mutate(strip_name=glue('{var_type} ({n})'),
+         rate=num_not_covered/n)
+write.table(not_covered_summary,file=glue('{bed_analysis_output_folder}/clinvar_not_covered_in_bed_summary.{Sys.Date()}.txt'),sep='\t',row.names = F)
+
+
+```
+
 ```{r clinvar_coverage_bam_based}
 # This part takes in a clinvar file and input bam files and generates coverage output for each variant in the clinvar file
 
@@ -70,11 +106,11 @@ coverage_df<-NULL
 for (group_name in unique(input_bams_df$group_name)){
   message(glue('Analyzing {group_name}..'))
   #if (group_name!='idt'){next}
-  group_output_folder<-glue('{main_output_folder}/{group_name}')
+  group_output_folder<-glue('{bam_analysis_output_folder}/{group_name}')
   if (!dir.exists(group_output_folder)){dir.create(group_output_folder)}
   for (sample_name in input_bams_df[input_bams_df$group_name==group_name,'sample_name']){
     message(glue('Analyzing {sample_name}..'))
-    sample_output_folder<-glue('{group_output_folder}/{sample_name}')
+    sample_output_folder<-glue('{bam_analysis_output_folder}/{sample_name}')
     clinvar_cov_file<-glue('{sample_output_folder}/{sample_name}_clinvar_cov_metrics.csv')
     if (file.exists(clinvar_cov_file)){
       message(glue('{clinvar_cov_file} already exists, will skip running coverage calculation'))
@@ -104,55 +140,20 @@ for (group_name in unique(input_bams_df$group_name)){
   }
 }
 
-coverage_file_name<-glue('{main_output_folder}/clinvar_coverage_analysis_results_{Sys.Date()}.tsv')
+coverage_file_name<-glue('{bam_analysis_output_folder}/clinvar_coverage_analysis_results_{Sys.Date()}.tsv')
 write.table(coverage_df,file=coverage_file_name,sep='\t',row.names = F)
 ```
 
 ```{r generate_clinvar_bam_coverage_report}
 library(rmarkdown)
+library(knitr)
 render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
        output_dir = main_output_folder,
        output_file = glue('{main_output_folder}/{main_output_prefix}.clinvar_bam_coverage.{Sys.Date()}.html'),
        quiet = F,
        params=list(main_output_folder=main_output_folder,
-                   main_output_prefix=main_output_prefix))
-```
-
-```{r clinvar_coverage_bed_based}
-# Given a list of target bed files check how are the P/LP clinvar variants covered in the different regions
-target_regions<-list('idt_v2'='/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.pad50.bed',
-                     #'agilent_v8'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_hg19.bed',
-                     #'agilent_v8_regions'='/media/SSD/Bioinformatics/Databases/agilent/agilent_XT_HS_v8_Regions_hg19.bed',
-                     'twist_exome_v2_plus'='/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.bed')
-targets_vs_clinvar_df<-NULL
-for (tr in names(target_regions)){
-  message(glue('Analyzing {tr}'))
-  tr_file<-target_regions[[tr]]
-  clinvar_vs_target_file<-intersect_target_with_clinvar(clinvar_file = clinvar_file,
-                                                        target_file = tr_file,
-                                                        preprocess_input_clinvar = FALSE,
-                                                        clinvar_vs_target_file = glue('{main_output_folder}/{tr}_vs_clinvar.tsv'))
-  # read the output file
-  clinvar_vs_target<-read_clinvar_vs_target_file(clinvar_vs_target_file)
-  targets_vs_clinvar_df<-targets_vs_clinvar_df%>%bind_rows(clinvar_vs_target%>%mutate(target=tr,target_file=tr_file,.before=1))
-}
-
-# Summarize coverage
-targets_vs_clinvar_df<-targets_vs_clinvar_df%>%left_join(targets_vs_clinvar_df%>%group_by(var_type)%>%summarize(n=n()))
-not_covered_summary<-targets_vs_clinvar_df%>%group_by(target,var_type,n)%>%
-  summarize(num_not_covered=sum(num_o_overlap==0))%>%
-  mutate(strip_name=glue('{var_type} ({n})'),
-         rate=num_not_covered/n)
-bed_coverage_plot<-
-  not_covered_summary%>%ggplot(aes(x=target,y=rate,fill=target))+
-  geom_col(alpha=0.5)+facet_wrap(strip_name~.,scales='free')+
-  theme_minimal()+scale_fill_nejm()+
-  scale_y_continuous(labels = scales::percent)+
-  labs(y='Number of P/LP variants not covered in target')+
-  theme(legend.position = 'bottom')
-ggsave(bed_coverage_plot,file=glue('{main_output_folder}/variants_outside_of_target_bed.jpg'),
-       device = 'jpg',
-       width = 20,height = 10,dpi=150,bg='white')
+                   main_output_prefix=main_output_prefix,
+                   analysis_type=analysis_type))
 ```
 
 

@@ -1,6 +1,7 @@
 param	value	options	comment
 bam_folder			Default: ./data/bam_analysis/input
 main_output_folder_prefix	test_run		
-target_regions	refseq_curated_cds_20220414		comma separated list of targets to consider (see input_files.txt)
-per_target_analysis	N	Y,N	comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target
+target_regions	idt_v2_hg19_pad50,twist_exome2_hg19_pad50		comma separated list of targets to consider (see input_files.txt)
+per_target_analysis	N	Y,N	comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target (for picard coverage analysis )
 clinvar_file	clinvar_snv_20230608		name of clinvar file (file will be grabbed accordingly from the input files
+analysis_type	both	bam,bed,both	whether to run only a BED coverage analysis, BAM coverage analysis or both
