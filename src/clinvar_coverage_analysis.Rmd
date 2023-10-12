@@ -1,5 +1,5 @@
 ---
-title: "gene coverage analysis"
+title: "ClinVar coverage analysis"
 author: "Clalit Genomics"
 date: "14/01/2022"
 output: 
@@ -9,23 +9,50 @@ output:
     toc_float: true
 ---
 
-```{r setup, include=FALSE}
-analysis_or_report='analysis'
-clinvar_file<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20230608.txt.gz'
-bam_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/bam_analysis/input'
+- BAM-based analysis:
+    * Calculate the coverage for each clinvar variant in the input clinvar VCF - the output is saved in the output folder 
+    * Parse the coverage output
 
+
+```{r setup, include=FALSE}
+analysis_setup_file<-'./config/analysis_setup/template.analysis_setup.txt'
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
-knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
 library(ProjectTemplate)
 setwd(project_dir)
 load.project()
+```
 
-#input_bams_df<-input_bams_df%>%mutate(group_name=stringr::str_match(group_name,'(agilent|idt|twist)')[,1])
+```{r intialize}
+input_files<-readr::read_delim('./config/input_files.txt',delim='\t')
+# analysis_setup
+analysis_setup<-readr::read_delim(analysis_setup_file,delim='\t')
+# bam folder
+bam_folder<-analysis_setup%>%filter(param=='bam_folder')%>%pull(value)
+input_bams_df<-read_input_bam_files(bam_folder)
+# clinvar files
+clinvar_file_name<-analysis_setup%>%filter(param=='clinvar_file')%>%pull(value)
+clinvar_file<-input_files%>%filter(type=='clinvar_snv',name==clinvar_file_name)%>%pull(file)
+# target regions
+target_regions_names<-analysis_setup%>%filter(param=='target_regions')%>%pull(value)%>%strsplit(',')%>%unlist()
+target_regions_table<-input_files%>%inner_join(data.frame(name=target_regions_names))
+target_regions<-target_regions_table%>%pull(file)
+target_reference_regions<-target_regions_table%>%pull(ref)
+per_target_analysis_req<-analysis_setup%>%filter(param=='per_target_analysis')%>%pull(value)%>%strsplit(',')%>%unlist()
+# reference regions
+reference_fasta<-input_files%>%filter(type=='reference_fasta')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
+reference_dict<-input_files%>%filter(type=='reference_dict')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
+# refseq transcript to gene name
+refseq2gene<-parse_refseq_transcript_to_gene_name()
 
-#main_output_folder<-glue('./output/enrichment_kit_comp_clinvar_coverage_analysis_2023-08-02-4')
-main_output_folder<-glue('./output/enrichment_kit_comp_clinvar_coverage_analysis_{Sys.Date()}')
-main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
+# prep output
+main_output_prefix<-analysis_setup%>%filter(param=='main_output_folder_prefix')%>%pull(value)
+main_output_folder<-glue('./output/{main_output_prefix}.clinvar_coverage_analysis.{Sys.Date()}')
+if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
+
+# copy analysis setup to the ouput folder
+system(glue('cp {analysis_setup_file} {main_output_folder}'))
 
 ```
 
@@ -35,6 +62,7 @@ clinvar_file<-clinvar_bed
 ```
 
 ```{r clinvar_coverage_bam_based}
+# This part takes in a clinvar file and input bam files and generates coverage output for each variant in the clinvar file
 
 bam_analysis_df<-data.frame(input_bams_df)
 coverage_df<-NULL
@@ -76,48 +104,18 @@ for (group_name in unique(input_bams_df$group_name)){
   }
 }
 
-coverage_df_long<-
-  coverage_df%>%select(-sample_name)%>%
-  pivot_longer(-c(group_name,var_type,n))%>%
-  mutate(strip_title=glue('{var_type} ({n})'),
-         rate=value/n)
-
-not_covered_plot<-
-  coverage_df_long%>%
-  filter(name%in%c('x0_cov_vars'))%>%
-  ggplot(aes(x=group_name,y=rate,color=group_name))+
-  geom_point()+
-  scale_y_continuous(labels = scales::percent)+
-  facet_wrap(.~strip_title,scales='free')+
-  theme_minimal()+
-  labs(title='P/LP variants not covered')+
-  theme(legend.position = 'bottom')
-not_covered_plot
-ggsave(not_covered_plot,file=glue('{main_output_folder}/variants_not_covered_plot.jpg'),
-       device = 'jpg',
-       width = 20,height = 10,dpi=150,bg='white')
-
-variants_below_20x<-
-  coverage_df_long%>%
-  filter(name%in%c('below_x20_cov_vars'))%>%
-  ggplot(aes(x=group_name,y=rate,fill=group_name,color=group_name))+
-  #geom_boxplot(alpha=0.2,width=0.2)+
-  geom_point()+
-  scale_y_continuous(labels = scales::percent)+
-  facet_wrap(.~strip_title,scales='free')+
-  theme_minimal()+
-  labs(title='P/LP Variants with coverage below 20x')+
-  theme(legend.position = 'bottom')
-variants_below_20x
-ggsave(variants_below_20x,file=glue('{main_output_folder}/variants_below_20x.jpg'),
-       device = 'jpg',
-       width = 20,height = 10,dpi=150,bg='white')
-
-# z<-coverage_df%>%mutate(sample_name=stringr::str_replace(sample_name,'_GIAB_IL-TW',''))%>%
-#   pivot_wider(id_cols = c(sample_name,var_type,n),names_from = group_name,values_from = c(mean_depth,x0_cov_vars,below_x10_cov_vars,below_x20_cov_vars))
 coverage_file_name<-glue('{main_output_folder}/clinvar_coverage_analysis_results_{Sys.Date()}.tsv')
 write.table(coverage_df,file=coverage_file_name,sep='\t',row.names = F)
+```
 
+```{r generate_clinvar_bam_coverage_report}
+library(rmarkdown)
+render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
+       output_dir = main_output_folder,
+       output_file = glue('{main_output_folder}/{main_output_prefix}.clinvar_bam_coverage.{Sys.Date()}.html'),
+       quiet = F,
+       params=list(main_output_folder=main_output_folder,
+                   main_output_prefix=main_output_prefix))
 ```
 
 ```{r clinvar_coverage_bed_based}

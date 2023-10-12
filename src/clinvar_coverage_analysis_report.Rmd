@@ -7,36 +7,23 @@ output:
     theme: united
     toc: true
     toc_float: false
+params:
+    main_output_folder: ''
+    main_output_prefix: ''
 ---
-```{r initial_setup,include=F}
-analysis_or_report='report'
-clinvar_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_clinvar_coverage_analysis_2022-06-20/'
-#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
-gene_list_file<-NA
-gene_list<-NA
-```
-
-
-```{r render_report,eval=F,echo=F}
-library(rmarkdown)
-render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
-       output_dir = clinvar_analysis_output_folder,
-       output_file = glue('{clinvar_analysis_output_folder}/enrichment_kit_comp_clinvar_coverage_by_bam_report.{Sys.Date()}.html'),
-       quiet = F)
-```
 
 ```{r setup, include=FALSE,warning=F,message=F}
-
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
-knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
 library(ProjectTemplate)
 setwd(project_dir)
 load.project()
-
 ```
 
 ```{r load_data,message=F}
+clinvar_analysis_output_folder<-params$main_output_folder
+
 clinvar_analysis_output_file<-grep('clinvar_coverage_analysis_results',list.files(clinvar_analysis_output_folder),value=T)
 clinvar_analysis_output<-readr::read_delim(glue('{clinvar_analysis_output_folder}/{clinvar_analysis_output_file}'))
 clinvar_analysis_output<-clinvar_analysis_output%>%
@@ -60,10 +47,9 @@ clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%
   summarize(n=min(n),
             mean_depth=mean(mean_depth),
             across(contains('cov_'),
-                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
+                   function(x) {round(mean(x),2)}))%>%
   ungroup()%>%
   mutate(var_type=glue('{var_type} (n={n})'))%>%select(-n)
-  #summarize(across(where(is.numeric),mean))
 
 output_table_var_type_per_group<-clinvar_analysis_var_type_per_group%>%
   select(-mean_depth)%>%
@@ -94,7 +80,7 @@ clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%
   summarize(n=sum(n/nsamps),
             mean_depth=mean(mean_depth),
             across(contains('cov_'),
-                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
+                   function(x) {round(mean(x),2)}))%>%#{glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
   mutate(var_group=glue('{var_group} (n={n})'))%>%select(-n)
 
 output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%

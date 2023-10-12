@@ -1,5 +1,6 @@
 param	value	options	comment
-bam_folder			should not be used, the coverage script automatically uses ./data/bam_analysis_input
+bam_folder			Default: ./data/bam_analysis/input
 main_output_folder_prefix	test_run		
 target_regions	refseq_curated_cds_20220414		comma separated list of targets to consider (see input_files.txt)
 per_target_analysis	N	Y,N	comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target
+clinvar_file	clinvar_snv_20230608		name of clinvar file (file will be grabbed accordingly from the input files
