@@ -8,7 +8,11 @@ output:
     toc: true
     toc_float: true
 ---
-
+- BED-based analysis:
+    * compares given clinvar file against target files (should be padded) 
+  output:
+    * clinvar_not_covered_in_bed : all the clinvar variants not covered in each target file
+    * clinvar_not_covered_in_bed_summary : coverage summary by variant type
 - BAM-based analysis:
     * Calculate the coverage for each clinvar variant in the input clinvar VCF - the output is saved in the output folder 
     * Parse the coverage output
