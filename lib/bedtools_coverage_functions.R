@@ -43,7 +43,7 @@ run_bedtools_coverage_by_bam<-function(input_bam,genome_file,target_region,outpu
   }
   #bed_coverage_command<-glue('bedtools bamtobed -i {input_bam} | bedtools coverage -g {genome_file} -a {target_region} -b - -hist -sorted > {coverage_output}')
   if (remove_duplicates){
-    bed_coverage_command<-glue('samtools view -uF 0x400 {input_bam} | bedtools coverage -hist -b - -a {target_region} > {coverage_output}')
+    bed_coverage_command<-glue('samtools view -uF 0x400 {input_bam} | bedtools coverage -g {genome_file} -hist -b - -a {target_region} -sorted > {coverage_output}')
   }else{
     bed_coverage_command<-glue('bedtools bamtobed -i {input_bam} | bedtools coverage -g {genome_file} -a {target_region} -b - -hist -sorted > {coverage_output}')
   }

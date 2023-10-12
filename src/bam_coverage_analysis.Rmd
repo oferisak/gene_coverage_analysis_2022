@@ -26,17 +26,19 @@ load.project()
 ```{r input_def}
 # Setup Variables ####
 #target_region<-'/media/SSD/Bioinformatics/Databases/refseq/refseq_hg19_curated_cds_20220403.bed.gz'
-target_region<-'/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed'
-#reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
-reference_fasta<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.fa'
+#target_region<-'/media/SSD/Bioinformatics/Projects/sequentify_validation_202308/NovaseqR7/targets.hg38.no_info.bed'
+#target_region<-'/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.bed'
+target_region<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/target_intervals/HPD_v4_target_hg19.txt.bed'
+reference_fasta<-'/media/SSD/Bioinformatics/Databases/dragen/hg19_dragen.fa'
+#reference_fasta<-'/media/SSD/Bioinformatics/Databases/hg38/hg38.fa'
 #gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/mody_panel.csv'
 
 
 ```
 
 ```{r calculate_bam_coverage_with_bedtools}
-remove_duplicates=FALSE
-main_output_folder<-glue('./output/sequentify_acmg_bam_analysis_with_duplicates_{Sys.Date()}')
+remove_duplicates=TRUE
+main_output_folder<-glue('./output/HPD_v4_bam_analysis_{Sys.Date()}')
 
 if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
 
