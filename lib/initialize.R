@@ -22,3 +22,7 @@ reference_dict<-input_files%>%filter(type=='reference_dict')%>%inner_join(data.f
 remove_duplicates<-ifelse(analysis_setup%>%filter(param=='remove_duplicates')%>%pull(value)==1,TRUE,FALSE)
 # refseq transcript to gene name
 refseq2gene<-parse_refseq_transcript_to_gene_name()
+# bam target regions (targets used to produced the bam files)
+bam_target_names<-analysis_setup%>%filter(param=='bam_targets')%>%pull(value)%>%strsplit(',')%>%unlist()
+bam_targets_table<-input_files%>%inner_join(data.frame(name=bam_target_names))
+bam_targets<-bam_targets_table%>%pull(file)
