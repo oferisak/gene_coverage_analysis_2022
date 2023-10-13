@@ -1,5 +1,5 @@
 param	value	options	comment
-bam_folder			Default: ./data/bam_analysis/input
+bam_folder	./data/bam_analysis/input		Default: ./data/bam_analysis/input
 main_output_folder_prefix	test_run		
 target_regions	idt_v2_hg19_pad50,twist_exome2_hg19_pad50		comma separated list of targets to consider (see input_files.txt)
 per_target_analysis	N	Y,N	comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target (for picard coverage analysis )

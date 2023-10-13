@@ -14,7 +14,11 @@ fix_clinvar_ucsc_file<-function(clinvar_file,main_output_folder,only_p_or_lp=T){
 # this function takes in a clinvar tsv file (downloaded from ucsc table browser *not bed*) and a bam file and calculates the coverage
 # only_p_or_lp - analyzes only pathogenic/likely pathogenic variants
 calculate_clinvar_coverage<-function(clinvar_bed,bam_file,genome_file,clinvar_cov_file){
-  clinvar_coverage_command<-glue('bedtools sort -g {genome_file} -i {clinvar_bed} | bedtools coverage -a - -b {bam_file} -sorted -g {genome_file} > {clinvar_cov_file}')
+  # sort clinvar file
+  message(glue('sorting {clinvar_cov_file}'))
+  system(glue('bedtools sort -g {genome_file} -i {clinvar_bed} > {clinvar_bed}.sorted'))
+  message(glue('calculating clinvar coverage for {input_bam}'))
+  clinvar_coverage_command<-glue('samtools view -uF 0x400 {input_bam} | bedtools coverage -a {clinvar_bed}.sorted -b - -sorted -g {genome_file} > {clinvar_cov_file}')
   message(glue('Running {clinvar_coverage_command}'))
   system(clinvar_coverage_command)
   return(clinvar_cov_file)

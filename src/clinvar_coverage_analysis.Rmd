@@ -114,7 +114,7 @@ for (group_name in unique(input_bams_df$group_name)){
   if (!dir.exists(group_output_folder)){dir.create(group_output_folder)}
   for (sample_name in input_bams_df[input_bams_df$group_name==group_name,'sample_name']){
     message(glue('Analyzing {sample_name}..'))
-    sample_output_folder<-glue('{bam_analysis_output_folder}/{sample_name}')
+    sample_output_folder<-glue('{bam_analysis_output_folder}/{group_name}/{sample_name}')
     clinvar_cov_file<-glue('{sample_output_folder}/{sample_name}_clinvar_cov_metrics.csv')
     if (file.exists(clinvar_cov_file)){
       message(glue('{clinvar_cov_file} already exists, will skip running coverage calculation'))

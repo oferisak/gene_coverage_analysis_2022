@@ -37,11 +37,11 @@ numbers_to_ranges<-function(numbers){
 }
 
 read_input_bam_files<-function(bam_folder=NA){
-  if (analysis_or_report=='report'){return()}
   if (is.na(bam_folder)){
     bam_folder<-'./data/bam_analysis/input'
   }
   group_dirs<-list.dirs(glue('{bam_folder}'),recursive = F)
+  print(group_dirs)
   input_bams_df<-NULL
   for (group_path in group_dirs){
     group_name<-basename(group_path)

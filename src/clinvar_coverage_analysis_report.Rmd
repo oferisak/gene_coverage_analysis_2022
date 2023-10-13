@@ -172,57 +172,96 @@ if (analysis_type %in% c('both','bam')){
 }
 ```
 
-```{r var_group_plot,warning=F,message=F,fig.width=10,fig.height=10}
-
-clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%
-  summarize(x0_cov_vars=sum(x0_cov_vars))%>%
-  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
-  coord_flip()+
-  #geom_boxplot(alpha=0.6)+facet_wrap(var_group~.)+
-  geom_point(alpha=0.6,size=3)+facet_wrap(var_group~.,scales='free')+
-  scale_color_nejm()+
-  guides(color='none',fill='none')+
-  labs(color=NULL,x=NULL,y='Number of variants without coverage')+
-  theme_minimal()+
-  theme(legend.position = 'top',strip.text = element_text(size=15))
-
-```
 
 ```{r, eval = print_bam}
 asis_output("## Clinvar coverage per variant type\\n") # Header that is only shown if print_option == TRUE
 ```
 
 ```{r var_type_summary_metrics,warning=F,message=F}
-DT:::datatable(
-    output_table_var_type_per_group,
-    filter = "top",
-    rownames= F,
-    extensions = list("Buttons" = NULL,
-                      "FixedColumns" = NULL),
-    options = list(
-                scrollX=T,
-                #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
-                fixedColumns = list(leftColumns = 2),
-                dom = 'BRrltpi',
-                autoWidth=TRUE,
-                lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
-                buttons = list('colvis')
-              )
-    )
+if (analysis_type %in% c('both','bam')){
+  DT:::datatable(
+      output_table_var_type_per_group,
+      filter = "top",
+      rownames= F,
+      extensions = list("Buttons" = NULL,
+                        "FixedColumns" = NULL),
+      options = list(
+                  scrollX=T,
+                  #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                  fixedColumns = list(leftColumns = 2),
+                  dom = 'BRrltpi',
+                  autoWidth=TRUE,
+                  lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                  buttons = list('colvis')
+                )
+      )
+}
 ```
 
-```{r var_type_plot,warning=F,message=F,fig.width=20,fig.height=10}
+```{r, eval = print_bam}
+asis_output("## Stats for the entire ClinVar variants set\\n") # Header that is only shown if print_option == TRUE
+```
 
-clinvar_analysis_output%>%
-  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
-  #geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
-  geom_point(alpha=0.6,size=3)+facet_wrap(var_type~.,scales='free')+
-  #scale_fill_nejm()+
-  scale_color_nejm()+
-  coord_flip()+
-  guides(color='none',fill='none')+
-  labs(color=NULL,x=NULL,y='Number of variants without coverage')+
-  theme_minimal()+
-  theme(legend.position = 'top',strip.text = element_text(size=15))
+```{r all_var_type,warning=F,message=F,fig.width=15,fig.height=15}
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%
+    mutate(mean_depth_n=n*mean_depth)%>%
+    group_by(group_name,sample_name)%>%
+    summarize(total_n=sum(n),
+              mean_depth=sum(mean_depth_n/total_n),
+              x0_cov_vars=sum(x0_cov_vars)/total_n,
+              below_x10_cov_vars=sum(below_x10_cov_vars)/total_n,
+              below_x20_cov_vars=sum(below_x20_cov_vars)/total_n)%>%
+    pivot_longer(-c(group_name,sample_name,total_n))%>%
+    ggplot(aes(x=group_name,y=value,fill=group_name,color=group_name))+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
+    geom_point(alpha=0.6,size=5)+facet_wrap(name~.,scales='free')+
+    #scale_fill_nejm()+
+    scale_color_nejm()+
+    coord_flip()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y=NULL)+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
+```
 
+```{r, eval = print_bam}
+asis_output("## Non-covered ClinVar variants by region (CDS, intronic)\\n") # Header that is only shown if print_option == TRUE
+```
+
+```{r var_group_plot,warning=F,message=F,fig.width=10,fig.height=10}
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%
+    summarize(x0_cov_vars=sum(x0_cov_vars))%>%
+    ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
+    coord_flip()+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_group~.)+
+    geom_point(alpha=0.6,size=3)+facet_wrap(var_group~.,scales='free')+
+    scale_color_nejm()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y='Number of variants without coverage')+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
+```
+
+```{r, eval = print_bam}
+asis_output("## Non-covered ClinVar variants by type\\n") # Header that is only shown if print_option == TRUE
+```
+
+```{r var_type_plot,warning=F,message=F,fig.width=20,fig.height=20}
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%
+    ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
+    geom_point(alpha=0.6,size=5)+facet_wrap(var_type~.,scales='free')+
+    #scale_fill_nejm()+
+    scale_color_nejm()+
+    coord_flip()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y='Number of variants without coverage')+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
 ```
