@@ -11,3 +11,4 @@ hg38_dict	hg38	/media/SSD/Bioinformatics/Databases/hg38/hg38.dict	reference_dict
 clinvar_snv_20230608	hg19	/media/SSD/Bioinformatics/Databases/clinvar/clinvar_snv_20230608.txt.gz	clinvar_snv
 idt_v2_hg19_pad50	hg19	/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.pad50.bed	target_region
 twist_exome2_hg19_pad50	hg19	/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.bed	target_region
+HPD_v4_hg19	hg19	/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/target_intervals/HPD_v4_target_hg19.txt.bed	target_region

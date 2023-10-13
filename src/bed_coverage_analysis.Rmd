@@ -6,20 +6,30 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-
-analysis_or_report<-'analysis'
+analysis_setup_file<-'./config/analysis_setup/template.analysis_setup.txt'
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
-knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
 library(ProjectTemplate)
 setwd(project_dir)
 load.project()
 ```
 
+```{r prep_analysis}
+# prep output
+main_output_prefix<-analysis_setup%>%filter(param=='main_output_folder_prefix')%>%pull(value)
+main_output_folder<-glue('./output/{main_output_prefix}.coverage_analysis.{Sys.Date()}')
+bed_analysis_output_folder<-glue('{main_output_folder}/bed_analysis')
+bam_analysis_output_folder<-glue('{main_output_folder}/bam_analysis')
+if (!dir.exists(main_output_folder)){dir.create(main_output_folder)}
+if (!dir.exists(bed_analysis_output_folder) & analysis_type%in%c('bed','both')){dir.create(bed_analysis_output_folder)}
+if (!dir.exists(bam_analysis_output_folder) & analysis_type%in%c('bam','both')){dir.create(bam_analysis_output_folder)}
+
+# copy analysis setup to the ouput folder
+system(glue('cp {analysis_setup_file} {main_output_folder}'))
+```
 
 ```{r bed_coverage_analysis}
-main_output_folder<-glue('./output/bed_coverage_analysis_{Sys.Date()}')
-main_output_folder<-kutils::dir.create.unique(main_output_folder,usedate = F)
 
 input_beds<-c('HPD_v4'='./data/target_intervals/HPD_v4_target_hg19.txt.bed')
 

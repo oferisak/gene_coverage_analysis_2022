@@ -28,30 +28,7 @@ setwd(project_dir)
 load.project()
 ```
 
-```{r intialize}
-input_files<-readr::read_delim('./config/input_files.txt',delim='\t')
-# analysis_setup
-analysis_setup<-readr::read_delim(analysis_setup_file,delim='\t')
-# analysis type
-analysis_type<-analysis_setup%>%filter(param=='analysis_type')%>%pull(value)
-# bam folder
-bam_folder<-analysis_setup%>%filter(param=='bam_folder')%>%pull(value)
-input_bams_df<-read_input_bam_files(bam_folder)
-# clinvar files
-clinvar_file_name<-analysis_setup%>%filter(param=='clinvar_file')%>%pull(value)
-clinvar_file<-input_files%>%filter(type=='clinvar_snv',name==clinvar_file_name)%>%pull(file)
-# target regions
-target_regions_names<-analysis_setup%>%filter(param=='target_regions')%>%pull(value)%>%strsplit(',')%>%unlist()
-target_regions_table<-input_files%>%inner_join(data.frame(name=target_regions_names))
-target_regions<-target_regions_table%>%pull(file)
-target_reference_regions<-target_regions_table%>%pull(ref)
-per_target_analysis_req<-analysis_setup%>%filter(param=='per_target_analysis')%>%pull(value)%>%strsplit(',')%>%unlist()
-# reference regions
-reference_fasta<-input_files%>%filter(type=='reference_fasta')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
-reference_dict<-input_files%>%filter(type=='reference_dict')%>%inner_join(data.frame(ref=target_reference_regions))%>%pull(file)
-# refseq transcript to gene name
-refseq2gene<-parse_refseq_transcript_to_gene_name()
-
+```{r prep_analysis}
 # prep output
 main_output_prefix<-analysis_setup%>%filter(param=='main_output_folder_prefix')%>%pull(value)
 main_output_folder<-glue('./output/{main_output_prefix}.clinvar_coverage_analysis.{Sys.Date()}')
@@ -63,7 +40,6 @@ if (!dir.exists(bam_analysis_output_folder) & analysis_type%in%c('bam','both')){
 
 # copy analysis setup to the ouput folder
 system(glue('cp {analysis_setup_file} {main_output_folder}'))
-
 ```
 
 ```{r prep_clinvar_file}
