@@ -1,29 +1,16 @@
-library(glue)
+project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022'
 app_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app'
-# set the padding around target region to use
-pad<-50
+library(ProjectTemplate)
+setwd(project_dir)
+load.project()
+library(glue)
 
-# in order to generate the founder variants file i used the supp table from Bella davidovs paper
-# i then copied the transcript:coding sequence column to the variantvalidator batch tool and used the output
+# set the target region and target region name
+target_region_name<-'twist'
+target_regions<-list('idt'='/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed',
+                     'twist'='/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.chrM.bed')
 
-target_region<-'/media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed'
-# first create a padded version of the target region (50bp)
-original_tr<-readr::read_delim(target_region,col_names = c('chr','start','end'))
-padded_tr<-original_tr%>%mutate(start=as.character(start-pad),
-                                end=as.character(end+pad))
-
-
-padded_tr_name<-stringr::str_replace(basename(target_region),'.bed','_pad50.bed')
-padded_tr_file<-glue('{app_folder}/accessory_data/founder_variants/{padded_tr_name}')
-
-write.table(file=padded_tr_file,
-            padded_tr,
-            col.names = F,
-            row.names = F,
-            quote = F,
-            sep='\t')
-
-# founder varaints genomic coordinates obtained from https://variantvalidator.org/
+# founder variants genomic coordinates obtained from https://variantvalidator.org/
 original_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_et_al_clinical_genetics_s8_updated_transcript_names.csv')
 vv_founder_file<-glue('{app_folder}/accessory_data/founder_variants/davidov_variant_validator_output_updated_transcript_names.csv')
 
