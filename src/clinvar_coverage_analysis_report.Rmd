@@ -7,171 +7,261 @@ output:
     theme: united
     toc: true
     toc_float: false
+params:
+    main_output_folder: ''
+    main_output_prefix: ''
+    analysis_type: ''
 ---
-```{r initial_setup,include=F}
-analysis_or_report='report'
-clinvar_analysis_output_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/output/enrichment_kit_comp_clinvar_coverage_analysis_2022-06-20/'
-#gene_list_file<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/data/gene_lists/LVNC.csv'
-gene_list_file<-NA
-gene_list<-NA
-```
-
-
-```{r render_report,eval=F,echo=F}
-library(rmarkdown)
-render('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/src/clinvar_coverage_analysis_report.Rmd', 
-       output_dir = clinvar_analysis_output_folder,
-       output_file = glue('{clinvar_analysis_output_folder}/enrichment_kit_comp_clinvar_coverage_by_bam_report.{Sys.Date()}.html'),
-       quiet = F)
-```
 
 ```{r setup, include=FALSE,warning=F,message=F}
-
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
-knitr::opts_knit$set(root.dir='/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
 library(ProjectTemplate)
 setwd(project_dir)
 load.project()
 
+print_bed<-FALSE
+print_bam<-FALSE
 ```
 
 ```{r load_data,message=F}
-clinvar_analysis_output_file<-grep('clinvar_coverage_analysis_results',list.files(clinvar_analysis_output_folder),value=T)
-clinvar_analysis_output<-readr::read_delim(glue('{clinvar_analysis_output_folder}/{clinvar_analysis_output_file}'))
-clinvar_analysis_output<-clinvar_analysis_output%>%
-  mutate(
-    var_group=case_when(
-      grepl('frame|missense|nonsense|synonym|stop|initiatior',var_type)~'cds variant',
-      grepl('splic',var_type)~'splicing',
-      grepl('intron|UTR',var_type)~'intron_and_utr',
-      grepl('stream',var_type)~'intergenic',
-      grepl('non-coding',var_type)~'non-coding transcript',
-      grepl('unspecified',var_type)~'unspecified'),
-    group_name=factor(group_name),
-    sample_name=factor(sample_name),
-    var_type=factor(var_type),
-    var_group=factor(var_group)
-    )
+clinvar_bam_analysis_output_folder<-glue('{params$main_output_folder}/bam_analysis')
+clinvar_bed_analysis_output_folder<-glue('{params$main_output_folder}/bed_analysis')
 
-# By var type
-clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%
-  group_by(group_name,var_type)%>%
-  summarize(n=min(n),
-            mean_depth=mean(mean_depth),
-            across(contains('cov_'),
-                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
-  ungroup()%>%
-  mutate(var_type=glue('{var_type} (n={n})'))%>%select(-n)
-  #summarize(across(where(is.numeric),mean))
+if (analysis_type %in% c('both','bam')){
+  print_bam<-TRUE
+  
+  clinvar_analysis_output_file<-grep('clinvar_coverage_analysis_results',list.files(clinvar_bam_analysis_output_folder),value=T)
+  clinvar_analysis_output<-readr::read_delim(glue('{clinvar_bam_analysis_output_folder}/{clinvar_analysis_output_file}'))
+  clinvar_analysis_output<-clinvar_analysis_output%>%
+    mutate(
+      var_group=case_when(
+        grepl('frame|missense|nonsense|synonym|stop|initiatior',var_type)~'cds variant',
+        grepl('splic',var_type)~'splicing',
+        grepl('intron|UTR',var_type)~'intron_and_utr',
+        grepl('stream',var_type)~'intergenic',
+        grepl('non-coding',var_type)~'non-coding transcript',
+        grepl('unspecified',var_type)~'unspecified'),
+      group_name=factor(group_name),
+      sample_name=factor(sample_name),
+      var_type=factor(var_type),
+      var_group=factor(var_group)
+      )
+  
+  # By var type
+  clinvar_analysis_var_type_per_group<-clinvar_analysis_output%>%
+    group_by(group_name,var_type)%>%
+    summarize(n=min(n),
+              mean_depth=mean(mean_depth),
+              across(contains('cov_'),
+                     function(x) {round(mean(x),2)}))%>%
+    ungroup()%>%
+    mutate(var_type=glue('{var_type} (n={n})'))%>%select(-n)
+  
+  output_table_var_type_per_group<-clinvar_analysis_var_type_per_group%>%
+    select(-mean_depth)%>%
+    rename('Not covered'=x0_cov_vars,
+           'Below 10x'=below_x10_cov_vars,
+           'Below 20x'=below_x20_cov_vars)%>%
+    pivot_longer(-c(group_name,var_type))%>%
+    pivot_wider(names_from = var_type,values_from = value)%>%
+    mutate(name=factor(name))
+  
+  # By Var Group
+  clinvar_analysis_var_group_output_total<-clinvar_analysis_output%>%
+    group_by(group_name,sample_name)%>%
+    summarize(mean_depth=sum(mean_depth*n),across(c(n,contains('cov_')),sum))%>%
+    mutate(var_group='total',
+           mean_depth=mean_depth/n)%>%ungroup()%>%
+    group_by(group_name)%>%
+    mutate(nsamps=length(unique(sample_name)))
+   
+  
+  clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%
+    left_join(clinvar_analysis_output%>%
+                group_by(group_name,var_type)%>%
+                select(group_name,sample_name)%>%
+                summarize(nsamps=n()))%>%
+    bind_rows(clinvar_analysis_var_group_output_total)%>%
+    group_by(group_name,var_group)%>%
+    summarize(n=sum(n/nsamps),
+              mean_depth=mean(mean_depth),
+              across(contains('cov_'),
+                     function(x) {round(mean(x),2)}))%>%#{glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
+    mutate(var_group=glue('{var_group} (n={n})'))%>%select(-n)
+  
+  output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%
+    select(-mean_depth)%>%
+    rename('Not covered'=x0_cov_vars,
+           'Below 10x'=below_x10_cov_vars,
+           'Below 20x'=below_x20_cov_vars)%>%
+    pivot_longer(-c(group_name,var_group))%>%
+    pivot_wider(names_from = var_group,values_from = value)%>%
+    mutate(name=factor(name))
+}
 
-output_table_var_type_per_group<-clinvar_analysis_var_type_per_group%>%
-  select(-mean_depth)%>%
-  rename('Not covered'=x0_cov_vars,
-         'Below 10x'=below_x10_cov_vars,
-         'Below 20x'=below_x20_cov_vars)%>%
-  pivot_longer(-c(group_name,var_type))%>%
-  pivot_wider(names_from = var_type,values_from = value)%>%
-  mutate(name=factor(name))
+if (analysis_type %in% c('bed','both')){
+  print_bed<-TRUE
+  clinvar_bed_analysis_output_file<-grep('clinvar_not_covered_in_bed_summary',list.files(clinvar_bed_analysis_output_folder),value=T)
+  not_covered_summary<-readr::read_delim(glue('{clinvar_bed_analysis_output_folder}/{clinvar_bed_analysis_output_file}'))
+}
+```
 
-# By Var Group
-clinvar_analysis_var_group_output_total<-clinvar_analysis_output%>%
-  group_by(group_name,sample_name)%>%
-  summarize(mean_depth=sum(mean_depth*n),across(c(n,contains('cov_')),sum))%>%
-  mutate(var_group='total',
-         mean_depth=mean_depth/n)%>%ungroup()%>%
-  group_by(group_name)%>%
-  mutate(nsamps=length(unique(sample_name)))
- 
+```{r, eval = print_bed}
+asis_output("## Clinvar variants not in target BED files\\n") # Header that is only shown if print_option == TRUE
+```
 
-clinvar_analysis_var_group_per_group<-clinvar_analysis_output%>%
-  left_join(clinvar_analysis_output%>%
-              group_by(group_name,var_type)%>%
-              select(group_name,sample_name)%>%
-              summarize(nsamps=n()))%>%
-  bind_rows(clinvar_analysis_var_group_output_total)%>%
-  group_by(group_name,var_group)%>%
-  summarize(n=sum(n/nsamps),
-            mean_depth=mean(mean_depth),
-            across(contains('cov_'),
-                   function(x) {glue('{round(mean(x),2)} ({round(100*mean(x)/n,3)}%)')}))%>%
-  mutate(var_group=glue('{var_group} (n={n})'))%>%select(-n)
+```{r bed_not_covered_table,warning=F,message=F }
+if (analysis_type %in% c('both','bed')){
+  DT:::datatable(
+      not_covered_summary,
+      filter = "top",
+      rownames= F,
+      extensions = list("Buttons" = NULL,
+                        "FixedColumns" = NULL),
+      options = list(
+                  scrollX=T,
+                  #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                  fixedColumns = list(leftColumns = 2),
+                  dom = 'BRrltpi',
+                  autoWidth=TRUE,
+                  lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                  buttons = list('colvis')
+                )
+      )
+}
+```
 
-output_table_var_group_per_group<-clinvar_analysis_var_group_per_group%>%
-  select(-mean_depth)%>%
-  rename('Not covered'=x0_cov_vars,
-         'Below 10x'=below_x10_cov_vars,
-         'Below 20x'=below_x20_cov_vars)%>%
-  pivot_longer(-c(group_name,var_group))%>%
-  pivot_wider(names_from = var_group,values_from = value)%>%
-  mutate(name=factor(name))
-
+```{r bed_coverage,warning=F,message=F,fig.width=20,fig.height=10}
+if (print_bed){
+  not_covered_summary%>%
+    ggplot(aes(x=target,y=rate,fill=target))+
+    geom_col(alpha=0.5)+facet_wrap(strip_name~.,scales='free')+
+    coord_flip()+
+    theme_minimal()+scale_fill_nejm()+
+    scale_y_continuous(labels = scales::percent)+
+    labs(y='Number of P/LP variants not covered in target')+
+    theme(legend.position = 'bottom')
+}
 
 ```
 
-## Clinvar coverage per variant group
+```{r, eval = print_bam}
+asis_output("## Clinvar coverage per variant group\\n") # Header that is only shown if print_option == TRUE
+```
 
 ```{r var_group_gtsummary,warning=F,message=F }
-DT:::datatable(
-    output_table_var_group_per_group,
-    filter = "top",
-    rownames= F,
-    extensions = list("Buttons" = NULL,
-                      "FixedColumns" = NULL),
-    options = list(
-                scrollX=T,
-                #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
-                fixedColumns = list(leftColumns = 2),
-                dom = 'BRrltpi',
-                autoWidth=TRUE,
-                lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
-                buttons = list('colvis')
-              )
-    )
+if (analysis_type %in% c('both','bam')){
+  DT:::datatable(
+      output_table_var_group_per_group,
+      filter = "top",
+      rownames= F,
+      extensions = list("Buttons" = NULL,
+                        "FixedColumns" = NULL),
+      options = list(
+                  scrollX=T,
+                  #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                  fixedColumns = list(leftColumns = 2),
+                  dom = 'BRrltpi',
+                  autoWidth=TRUE,
+                  lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                  buttons = list('colvis')
+                )
+      )
+}
+```
 
+
+```{r, eval = print_bam}
+asis_output("## Clinvar coverage per variant type\\n") # Header that is only shown if print_option == TRUE
+```
+
+```{r var_type_summary_metrics,warning=F,message=F}
+if (analysis_type %in% c('both','bam')){
+  DT:::datatable(
+      output_table_var_type_per_group,
+      filter = "top",
+      rownames= F,
+      extensions = list("Buttons" = NULL,
+                        "FixedColumns" = NULL),
+      options = list(
+                  scrollX=T,
+                  #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
+                  fixedColumns = list(leftColumns = 2),
+                  dom = 'BRrltpi',
+                  autoWidth=TRUE,
+                  lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
+                  buttons = list('colvis')
+                )
+      )
+}
+```
+
+```{r, eval = print_bam}
+asis_output("## Stats for the entire ClinVar variants set\\n") # Header that is only shown if print_option == TRUE
+```
+
+```{r all_var_type,warning=F,message=F,fig.width=15,fig.height=15}
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%
+    mutate(mean_depth_n=n*mean_depth)%>%
+    group_by(group_name,sample_name)%>%
+    summarize(total_n=sum(n),
+              mean_depth=sum(mean_depth_n/total_n),
+              x0_cov_vars=sum(x0_cov_vars)/total_n,
+              below_x10_cov_vars=sum(below_x10_cov_vars)/total_n,
+              below_x20_cov_vars=sum(below_x20_cov_vars)/total_n)%>%
+    pivot_longer(-c(group_name,sample_name,total_n))%>%
+    ggplot(aes(x=group_name,y=value,fill=group_name,color=group_name))+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
+    geom_point(alpha=0.6,size=5)+facet_wrap(name~.,scales='free')+
+    #scale_fill_nejm()+
+    scale_color_nejm()+
+    coord_flip()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y=NULL)+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
+```
+
+```{r, eval = print_bam}
+asis_output("## Non-covered ClinVar variants by region (CDS, intronic)\\n") # Header that is only shown if print_option == TRUE
 ```
 
 ```{r var_group_plot,warning=F,message=F,fig.width=10,fig.height=10}
-
-clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%summarize(x0_cov_vars=sum(x0_cov_vars))%>%
-  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name))+
-  geom_boxplot(alpha=0.6)+facet_wrap(var_group~.)+
-  scale_fill_nejm()+
-  labs(fill=NULL,x=NULL,y='Number of variants without coverage')+
-  theme_minimal()+
-  theme(legend.position = 'top',strip.text = element_text(size=15))
-
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%group_by(group_name,sample_name,var_group)%>%
+    summarize(x0_cov_vars=sum(x0_cov_vars))%>%
+    ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
+    coord_flip()+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_group~.)+
+    geom_point(alpha=0.6,size=3)+facet_wrap(var_group~.,scales='free')+
+    scale_color_nejm()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y='Number of variants without coverage')+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
 ```
 
-## Clinvar coverage per variant type
-
-```{r var_type_summary_metrics,warning=F,message=F}
-DT:::datatable(
-    output_table_var_type_per_group,
-    filter = "top",
-    rownames= F,
-    extensions = list("Buttons" = NULL,
-                      "FixedColumns" = NULL),
-    options = list(
-                scrollX=T,
-                #columnDefs = list(list(targets = c(3:ncol(coverage_df)-1), visible = FALSE)),
-                fixedColumns = list(leftColumns = 2),
-                dom = 'BRrltpi',
-                autoWidth=TRUE,
-                lengthMenu = list(c(10, 50, -1), c('10', '50', 'All')),
-                buttons = list('colvis')
-              )
-    )
+```{r, eval = print_bam}
+asis_output("## Non-covered ClinVar variants by type\\n") # Header that is only shown if print_option == TRUE
 ```
 
-```{r var_type_plot,warning=F,message=F,fig.width=15,fig.height=10}
-
-clinvar_analysis_output%>%
-  ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name))+
-  geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
-  scale_fill_nejm()+
-  labs(fill=NULL,x=NULL,y='Number of variants without coverage')+
-  theme_minimal()+
-  theme(legend.position = 'top',strip.text = element_text(size=15))
-
+```{r var_type_plot,warning=F,message=F,fig.width=20,fig.height=20}
+if (analysis_type %in% c('both','bam')){
+  clinvar_analysis_output%>%
+    ggplot(aes(x=group_name,y=x0_cov_vars,fill=group_name,color=group_name))+
+    #geom_boxplot(alpha=0.6)+facet_wrap(var_type~.,scales='free')+
+    geom_point(alpha=0.6,size=5)+facet_wrap(var_type~.,scales='free')+
+    #scale_fill_nejm()+
+    scale_color_nejm()+
+    coord_flip()+
+    guides(color='none',fill='none')+
+    labs(color=NULL,x=NULL,y='Number of variants without coverage')+
+    theme_minimal()+
+    theme(legend.position = 'top',strip.text = element_text(size=15))
+}
 ```

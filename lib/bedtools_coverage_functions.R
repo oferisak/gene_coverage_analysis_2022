@@ -53,14 +53,14 @@ run_bedtools_coverage_by_bam<-function(input_bam,genome_file,target_region,outpu
   return(coverage_output)
 }
 
-# bed coverage by bed - check how one bed file (bed_to_test) covers a reference bed
-run_bedtools_coverage_by_bed<-function(reference_bed,bed_name,bed_to_test,output_folder){
-  test_bed_name<-stringr::str_replace(basename(bed_to_test),'.bed','')
+# bed coverage by bed - check how one bed file (bed_b) covers a second bed (bed a)
+run_bedtools_coverage_by_bed<-function(bed_a,bed_b,bed_name,output_folder){
+  test_bed_name<-stringr::str_replace(basename(bed_b),'.bed','')
   output_dir<-glue('./{output_folder}/{bed_name}/')
   if (!dir.exists(output_dir)){dir.create(output_dir)}
   fix_input_bed_awk<-'awk -F\'\\t\' \'{print $1"\\t"$2"\\t"$3}\''
   # after grabing only the first three columns, merge the regions so there will be a maximum of one overlap
-  bed_coverage_command<-glue('{fix_input_bed_awk} "{bed_to_test}"| sort -k 1,1 -k2,2n - | bedtools merge -i - | bedtools coverage -mean -a "{reference_bed}" -b - > {output_dir}/{bed_name}.coverage')
+  bed_coverage_command<-glue('{fix_input_bed_awk} "{bed_b}"| sort -k 1,1 -k2,2n - | bedtools merge -i - | bedtools coverage -mean -a "{bed_a}" -b - > {output_dir}/{bed_name}.coverage')
   message(glue('Running {bed_coverage_command}'))
   system(bed_coverage_command)
   return(glue('./{output_dir}/{bed_name}.coverage'))

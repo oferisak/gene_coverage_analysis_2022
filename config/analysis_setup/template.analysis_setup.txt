@@ -1,0 +1,9 @@
+param	value	options	comment
+bam_folder	./data/bam_analysis/input		Default: ./data/bam_analysis/input
+main_output_folder_prefix	test_run		
+target_regions	HPD_v4_hg19	see input_files.txt	comma separated list of targets to consider (see input_files.txt)
+per_target_analysis	N	Y,N	(for picard coverage analysis ) comma separated Y/N corresponding to the targets to state whether the analysis should be per-target for each target 
+clinvar_file	clinvar_snv_20230608	see input_files.txt	name of clinvar file (file will be grabbed accordingly from the input files
+analysis_type	both	bam,bed,both	whether to run only a BED coverage analysis, BAM coverage analysis or both
+remove_duplicates	1	1,0	for BEDtools based analysis, whether duplicates should be removed from input bams before coverage is calculated
+bam_targets	idt_v2_hg19_pad50,twist_exome2_hg19_pad50	see input_files.txt	the target regions used to produce the BAM files in the input
