@@ -4,10 +4,12 @@
 plot_per_target_metric<-function(coverage_df,metric='MEAN_TARGET_COVERAGE'){
   g <-
     coverage_df %>% ggplot(aes_string(x = 'group_name', y = metric, fill ='group_name')) +
-    geom_boxplot(alpha = 0.6) + facet_wrap(BAIT_SET ~ .) +
+    geom_boxplot(alpha = 0.6) + 
+    coord_flip()+
+    facet_wrap(BAIT_SET ~ .) +
     scale_fill_nejm() +
     theme_minimal()+labs(fill=NULL,title=metric,y=NULL,x=NULL)+
-    theme(legend.position = 'top',strip.text = element_text(size=12),axis.text.x=element_text(size=12))
+    theme(legend.position = 'top',text = element_text(size=20),strip.text = element_text(size=12),axis.text.x=element_text(size=12))
   if (grepl('PCT',metric)){g<-g+scale_y_continuous(labels = scales::percent)}
   g
   return(g)

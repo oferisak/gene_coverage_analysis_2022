@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-analysis_setup_file<-'./config/analysis_setup/lp_kit_comparison.analysis_setup.csv'
+analysis_setup_file<-'./config/analysis_setup/twist_local_vs_external.analysis_setup.csv'
 project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/'
 knitr::opts_knit$set(root.dir=project_dir)
 knitr::opts_chunk$set(echo = F)
