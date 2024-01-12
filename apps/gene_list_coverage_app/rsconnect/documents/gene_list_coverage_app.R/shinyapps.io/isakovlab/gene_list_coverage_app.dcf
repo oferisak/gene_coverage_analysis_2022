@@ -5,10 +5,8 @@ account: isakovlab
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 6119863
-bundleId: 7317815
+bundleId: 8035334
 url: https://isakovlab.shinyapps.io/gene_list_coverage_app/
-when: 1686167146.49157
-lastSyncTime: 1686167146.4916
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: bedtools_functions.R|coverage_references/idt-refseq-curated-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-curated-cds_per_transcript_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_transcript_coverage_reference.tsv.gz|prepare_data_for_app.R|prepare_founder_variant_coverage_data_for_app.R|README.md|data_for_prepare
+ignoredFiles: compare_founders_with_target_bed.Rmd|coverage_references/idt-refseq-curated-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-curated-cds_per_transcript_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_transcript_coverage_reference.tsv.gz|prepare_data_for_app.R|README.md|data_for_prepare
