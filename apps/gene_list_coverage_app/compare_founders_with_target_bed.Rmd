@@ -1,0 +1,102 @@
+---
+title: "compare founder vars against a target bed"
+author: "Ofer Isakov"
+date: '2023-03-07'
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/')
+library(ProjectTemplate)
+load.project()
+```
+
+```{r definitions}
+target_files<-list('idt'='/media/SSD/Bioinformatics/Databases/idt/xgen_hg19_exome_with_mt_targets.pad50.bed',
+                   'twist'='/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.chrM.bed')
+founders_dir<-glue('./apps/gene_list_coverage_app/data_for_prepare/founder_variants')
+output_dir<-glue('./apps/gene_list_coverage_app/accessory_data')
+dir.create(output_dir)
+```
+
+```{r functions}
+parse_intersection_output<-function(intersect_output,founder_bed_prefix){
+  num_original_variants<-nrow(intersect_output%>%distinct())
+  not_covered_variants<-intersect_output%>%filter(is_covered==0)%>%
+    mutate(source=founder_bed_prefix)%>%
+    distinct()
+  num_not_covered_variants<-nrow(not_covered_variants)
+  num_intronic_variants_not_covered<-sum(grepl('+|-',not_covered_variants$hgvs_notation))
+  message(glue('There are {num_not_covered_variants}/{num_original_variants} not covered variants. {num_intronic_variants_not_covered}/{num_not_covered_variants} are intronic'))
+  return(not_covered_variants)
+}
+
+vep_to_bed<-function(vep_df,bed_prefix='mutalyzer_to_bed_file'){
+  original_size<-nrow(vep_df)
+  bed_file<-vep_df%>%
+    filter(!is.na(start))%>%
+    mutate(chr=glue('chr{chr_GRCh37}'),
+           start=start_GRCh37-1)%>%
+    select(chr,start,start_GRCh37,gene,variant,hgvs_notation)%>%
+    distinct()
+  bed_size<-nrow(bed_file)
+  output_file<-glue('{founders_dir}/{bed_prefix}.bed')
+  message(glue('Converted {bed_size}/{original_size} variants.. writing into {output_file}'))
+  write.table(bed_file,file = output_file,quote = F,sep = '\t',row.names = F,col.names = F)
+  return(output_file)
+}
+
+intersect_bed_with_target<-function(a_file,b_file){
+  intersect_command<-glue('bedtools intersect -c -a {a_file} -b {b_file}')
+  message(glue('Running {intersect_command}'))
+  intersect_output_raw<-system(intersect_command,intern = TRUE)
+  intersect_output<-read.table(text=intersect_output_raw,sep='\t',header = F)
+  # add a column name to the last colum
+  colnames(intersect_output)<-c('chr','start','end','gene','variant','hgvs_notation','is_covered')
+  return(intersect_output)
+}
+
+```
+
+```{r compare_founders_vs_targets}
+founder_lists<-list('myscreen'='./apps/gene_list_coverage_app/data_for_prepare/founder_variants/preconception_screening_myscreen_vep_202305.withGRCh37.csv',
+                    'moh'='./apps/gene_list_coverage_app/data_for_prepare/founder_variants/preconception_screening_moh_vep_202305.withGRCh37.csv',
+                    'onco51'='./apps/gene_list_coverage_app/data_for_prepare/founder_variants/onco51_panel_vep_202305.withGRCh37.csv')
+
+for (target_name in names(target_files)){
+  target_file<-target_files[[target_name]]
+  founder_cov_files<-c()
+  for (founder_list_name in names(founder_lists)){
+    message(glue('Analyzing {target_name} vs {founder_list_name}'))
+    founder_list_file<-founder_lists[[founder_list_name]]
+    founder_variants<-readr::read_delim(founder_list_file,delim='\t')
+    founder_variants<-founder_variants%>%distinct()
+    # generate bed file
+    founder_bed_prefix<-basename(founder_list_file)%>%stringr::str_replace('\\.csv','')
+    founder_bed_file<-vep_to_bed(founder_variants,bed_prefix = founder_bed_prefix)
+    
+    intersect_output<-intersect_bed_with_target(founder_bed_file,b_file=target_file)
+    not_covered_variants<-parse_intersection_output(intersect_output,founder_bed_prefix)
+    
+    founder_variants<-intersect_output%>%mutate(source=founder_bed_prefix)%>%left_join(founder_variants%>%
+                                                                                         select(chr,start,hgvs_notation))
+    founder_cov_name<-glue('{founders_dir}/{target_name}_{founder_bed_prefix}_coverage.csv')
+    write.table(founder_variants,founder_cov_name,row.names = F,sep='\t',quote = F)
+    founder_cov_files<-c(founder_cov_files,founder_cov_name)
+  }
+  
+  all_coverage_variants<-NULL
+  for (nc_file in founder_cov_files){
+    ncv<-readr::read_delim(nc_file,delim='\t')
+    all_coverage_variants<-all_coverage_variants%>%bind_rows(ncv)
+  }
+  write.table(all_coverage_variants,
+              file=glue('{output_dir}/{target_name}_founder_variants_not_covered.{Sys.Date()}.csv'),
+              row.names = F,
+              sep='\t',
+              quote = F)
+}
+
+```

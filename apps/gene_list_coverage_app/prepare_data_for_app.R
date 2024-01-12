@@ -1,4 +1,8 @@
+project_dir<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022'
 app_folder<-'/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app'
+library(ProjectTemplate)
+setwd(project_dir)
+load.project()
 
 # Prepare gene name table
 refseq_curated_to_gene<-readr::read_delim('/media/SSD/Bioinformatics/Databases/refseq/refseq_curated_to_gene.txt.gz',
@@ -59,6 +63,10 @@ clinvar_vcf<-'/media/SSD/Bioinformatics/Databases/clinvar/clinvar_20221224.plp.h
 
 # IDT
 target_file<-'/media/SSD/Bioinformatics/Databases/idt/xgen_hg19_exome_with_mt_targets.pad50.bed'
+bedtools_intersect_with_clinvar_vcf(clinvar_vcf,bed_file = target_file,get_missing = T,
+                                    output_dir = glue('{app_folder}/accessory_data'))
+# Twist
+target_file<-'/media/SSD/Bioinformatics/Databases/twist/twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.chrM.bed'
 bedtools_intersect_with_clinvar_vcf(clinvar_vcf,bed_file = target_file,get_missing = T,
                                     output_dir = glue('{app_folder}/accessory_data'))
 

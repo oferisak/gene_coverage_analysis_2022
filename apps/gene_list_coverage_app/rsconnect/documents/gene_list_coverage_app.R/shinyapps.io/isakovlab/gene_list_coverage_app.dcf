@@ -1,0 +1,12 @@
+name: gene_list_coverage_app
+title: gene_list_coverage_app
+username:
+account: isakovlab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6119863
+bundleId: 8035334
+url: https://isakovlab.shinyapps.io/gene_list_coverage_app/
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: compare_founders_with_target_bed.Rmd|coverage_references/idt-refseq-curated-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-curated-cds_per_transcript_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_exon_coverage_reference.tsv.gz|coverage_references/idt-refseq-select-cds_per_transcript_coverage_reference.tsv.gz|prepare_data_for_app.R|README.md|data_for_prepare

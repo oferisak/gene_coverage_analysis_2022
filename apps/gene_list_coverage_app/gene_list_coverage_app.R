@@ -94,12 +94,22 @@ refseq_with_segdup<-refseq_curated%>%left_join(segdup_intersect_data%>%select(-c
 refseq_with_segdup<-refseq_with_segdup%>%mutate(exon_num=ifelse(strand=='-',total_exons-exon_num-1,exon_num))
 
 # Add clinvar information as well
-idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
+#idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
 #idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app//accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
 
+
+target_choices<-c('idt','twist')
 founder_variants_target_cov<-list()
-founder_variants_target_cov[['idt']]<-readr::read_delim('./accessory_data/founder_variants_coverage_idt.202305.csv',delim='\t')
+clinvar_target_cov<-list()
+# IDT
+founder_variants_target_cov[['idt']]<-readr::read_delim('./accessory_data/idt_founder_variants_not_covered.2023-12-11.csv',delim='\t')
 founder_variants_target_cov[['idt']]<-founder_variants_target_cov[['idt']]%>%rename(gene_symbol=gene)
+clinvar_target_cov[['idt']]<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
+# TWIST
+founder_variants_target_cov[['twist']]<-readr::read_delim('./accessory_data/twist_founder_variants_not_covered.2023-12-11.csv',delim='\t')
+founder_variants_target_cov[['twist']]<-founder_variants_target_cov[['twist']]%>%rename(gene_symbol=gene)
+clinvar_target_cov[['twist']]<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_twist_hg19_exome_comp_spikein_v2.0.2_targets_sorted.re_annotated_0.pad50.chrM.bed.gz')
+
 # Define UI ####
 ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                     titleWidth = 290), 
@@ -167,6 +177,8 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                                   multiple = FALSE,
                                                   accept = c(".csv",".tsv",'.xls','.xlsx')),
                                         selectizeInput('gene_list_selection',choices = NULL,selected=NULL,multiple=TRUE,label='Gene List'),
+                                        div(selectizeInput('target_selection', label='Select enrichment kit', multiple=F,choices=target_choices,width = 800,options= list(maxOptions = 5000)), 
+                                            style='font-size:150%;'),
                                         div(verbatimTextOutput(outputId = 'num_of_parsed_genes'),style='font-size:125%;'),
                                         div(DT::dataTableOutput(outputId = 'gene_list_table'), 
                                             style='font-size:125%;'))
@@ -181,13 +193,13 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                         div(uiOutput(outputId='per_transcript_cov_plot'),height = '400px')
                                     )),
                             tabItem('missing_clinvar',
-                                      div(selectizeInput('missing_clinvar_target_selection', label='Select enrichment kit', multiple=F,choices=c('idt'),width = 800,options= list(maxOptions = 5000)), 
-                                          style='font-size:200%;'),
+                                      # div(selectizeInput('missing_clinvar_target_selection', label='Select enrichment kit', multiple=F,choices=target_choices,width = 800,options= list(maxOptions = 5000)), 
+                                      #     style='font-size:200%;'),
                                       div(DT::dataTableOutput(outputId='missing_clinvar_table'),
                                           style='font-size:100%;')),
                             tabItem('founder_vars_target_cov',
-                                    div(selectizeInput('founder_var_target_selection', label='Select enrichment kit', multiple=F,choices=c('idt'),width = 800,options= list(maxOptions = 5000)), 
-                                        style='font-size:200%;'),
+                                    # div(selectizeInput('founder_var_target_selection', label='Select enrichment kit', multiple=F,choices=target_choices,width = 800,options= list(maxOptions = 5000)), 
+                                    #     style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId='founder_var_in_genes_table'),
                                         style='font-size:100%;')),
                             tabItem('disclaimer_table',
@@ -195,8 +207,8 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                         style='font-size:200%;'),
                                     div(sliderInput('disclaimer_segdup_thresh', label='Select Minimal Duplication Level',value = 0.98, min = 0.9,max=1,width = 800), 
                                         style='font-size:200%;'),
-                                    div(selectInput('disclaimer_coverage_kit', label='Select Kit for Coverage',choices = c('idt'),selected = 'idt',width = 800), 
-                                        style='font-size:200%;'),
+                                    # div(selectInput('disclaimer_coverage_kit', label='Select Kit for Coverage',choices = target_choices,selected = 'idt',width = 800), 
+                                    #     style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId = 'disclaimer_table'), 
                                         style='font-size:100%;')),
                             tabItem('disclaimer_text',
@@ -289,11 +301,8 @@ server <- function(input, output) {
     
     update_missing_clinvar<-function(gene_symbols){
       to_ret<-
-        eventReactive(input$missing_clinvar_target_selection,{
-        target_table<-NA
-        if (input$missing_clinvar_target_selection=='idt'){
-          target_table<-idt_missing_vars
-          }
+        eventReactive(input$target_selection,{
+        target_table<-clinvar_target_cov[[input$target_selection]]
         genes_with_missing_vars<-get_genes_missing_clinvar_variants(gene_symbols,target_table)
         if (is.null(genes_with_missing_vars)){
           genes_with_missing_vars=data.frame(gene_symbol=NA)
@@ -332,11 +341,9 @@ server <- function(input, output) {
     
     update_founder_vars<-function(gene_symbols){
       to_ret<-
-        eventReactive(input$founder_var_target_selection,{
+        eventReactive(input$target_selection,{
           founder_for_disclaimer<-data.frame(gene_symbol=NA,missing_founders=NA)
-          if (input$founder_var_target_selection=='idt'){
-            founder_table<-founder_variants_target_cov[['idt']]
-          }
+          founder_table<-founder_variants_target_cov[[input$target_selection]]
           founder_table<-founder_table%>%filter(gene_symbol %in% gene_symbols)%>%arrange(gene_symbol,variant)
           founder_for_disclaimer<-founder_table%>%filter(is_covered==0)%>%
             group_by(gene_symbol)%>%
@@ -433,7 +440,13 @@ server <- function(input, output) {
     
     gene_list<-NULL
     gene_list_annotated<-NULL
-    observeEvent(input$gene_list_selection,{
+    toListen <- reactive({
+      list(input$gene_list_selection,
+           input$target_selection)
+    })
+    observeEvent(toListen(),{
+      if (!is.null(input$gene_list_selection)){
+        
         added_genes<-setdiff(input$gene_list_selection,gene_list$gene_symbol)
         gene_list<-gene_list%>%bind_rows(data.frame(gene_symbol=added_genes,gene_name_provided=added_genes))
         
@@ -451,6 +464,7 @@ server <- function(input, output) {
         missing_clinvar_data<-update_missing_clinvar(gene_symbols)
         founder_table<-update_founder_vars(gene_symbols)
         update_disclaimer_table(gene_list_annotated,genes_seg_data,missing_clinvar_data,founder_table)
+      }
     })
     # per transcript ####
     observeEvent(input$gene_list_file,{
