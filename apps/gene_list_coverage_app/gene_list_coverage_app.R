@@ -5,7 +5,7 @@ library(tidyr)
 library(reactable)
 library(dplyr)
 library(dashboardthemes)
-library(xlsx)
+library(openxlsx)
 library(stringr)
 library(glue)
 library(plotly)
@@ -86,19 +86,20 @@ refseq_curated<-readr::read_delim('./accessory_data/refseq_hg19_curated_exons_20
 
 # add total number of exons
 refseq_curated<-refseq_curated%>%left_join(refseq_curated%>%group_by(transcript_name,chr)%>%summarize(total_exons=n()))
-
 refseq_with_segdup<-refseq_curated%>%left_join(segdup_intersect_data%>%select(-c(start,end)),by=c('transcript_name','chr','exon_num'))
 
 # fix exon number (in minus strand transcripts it should be the other way around..)
 # the minus one is because the exons start at 0
 refseq_with_segdup<-refseq_with_segdup%>%mutate(exon_num=ifelse(strand=='-',total_exons-exon_num-1,exon_num))
 
-# Add clinvar information as well
-#idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('./accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
-#idt_missing_vars<-parse_bed_clinvar_vcf_intersect_output('/media/SSD/Bioinformatics/Projects/gene_coverage_analysis_2022/apps/gene_list_coverage_app//accessory_data/clinvar_20221224.plp.hg19_vs_xgen_hg19_exome_with_mt_targets.pad50.bed.gz')
-
 
 target_choices<-c('idt','twist')
+gene_target_cov<-list()
+for (target_choice in target_choices){
+  message(glue('parsing {target_choice} target coverage..'))
+  gene_target_cov[[target_choice]]<-readr::read_delim(glue('./accessory_data/refseq_curated.20240112.{target_choice}.pad50.per_exon_cov.csv.gz'))
+}
+
 founder_variants_target_cov<-list()
 clinvar_target_cov<-list()
 # IDT
@@ -116,6 +117,9 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                     dashboardSidebar(width = 290,
                                      sidebarMenu(menuItem("Gene List Upload",
                                                           tabName = "gene_list_upload", 
+                                                          icon = icon('search')),
+                                                 menuItem('Target coverage',
+                                                          tabName = "target_coverage", 
                                                           icon = icon('search')),
                                                  menuItem('Segmental dups plots',
                                                           tabName = "segdup_plots", 
@@ -192,14 +196,13 @@ ui <- dashboardPage(dashboardHeader(title = sprintf('Disclaimer Generator'),
                                             style='font-size:200%;'),
                                         div(uiOutput(outputId='per_transcript_cov_plot'),height = '400px')
                                     )),
+                            tabItem('target_coverage',
+                                    div(DT::dataTableOutput(outputId='target_gene_cov_table'),
+                                        style='font-size:100%;')),
                             tabItem('missing_clinvar',
-                                      # div(selectizeInput('missing_clinvar_target_selection', label='Select enrichment kit', multiple=F,choices=target_choices,width = 800,options= list(maxOptions = 5000)), 
-                                      #     style='font-size:200%;'),
                                       div(DT::dataTableOutput(outputId='missing_clinvar_table'),
                                           style='font-size:100%;')),
                             tabItem('founder_vars_target_cov',
-                                    # div(selectizeInput('founder_var_target_selection', label='Select enrichment kit', multiple=F,choices=target_choices,width = 800,options= list(maxOptions = 5000)), 
-                                    #     style='font-size:200%;'),
                                     div(DT::dataTableOutput(outputId='founder_var_in_genes_table'),
                                         style='font-size:100%;')),
                             tabItem('disclaimer_table',
@@ -297,6 +300,41 @@ server <- function(input, output) {
             
         })
         return(genes_seg_data)
+    }
+    
+    update_target_coverage<-function(gene_symbols){
+      to_ret<-
+        eventReactive(input$target_selection,{
+          selected_target_gene_cov<-gene_target_cov[[input$target_selection]]
+          selected_genes_target_cov<-selected_target_gene_cov%>%filter(gene_symbol %in% gene_symbols)%>%
+            mutate(gene_symbol=factor(gene_symbol),
+                   transcript_name=factor(transcript_name),
+                   is_coding=factor(is_coding))%>%
+            relocate(gene_symbol,transcript_name)
+          output_table<-selected_genes_target_cov%>%
+            select(-c(X1,num_of_overlap))%>%
+            arrange(transcript_name,start)
+          output$target_gene_cov_table <-
+            DT::renderDataTable(
+              DT::datatable(
+                output_table,
+                options =
+                  list(
+                    scrollX = F,
+                    pageLength = 100,
+                    buttons = c('csv', 'excel'),
+                    dom = 'Bfrtip'
+                  ),
+                extensions = 'Buttons',
+                selection =
+                  'single',
+                rownames = FALSE,
+                filter = list(position = 'top', clear = FALSE)
+              )
+            )
+          #print(packed_missing_vars)
+        })
+      return(to_ret())
     }
     
     update_missing_clinvar<-function(gene_symbols){
@@ -459,7 +497,7 @@ server <- function(input, output) {
                                                     selection='single',
                                                     rownames= FALSE,
                                                     filter = list(position = 'top', clear = FALSE))
-        
+        update_target_coverage(gene_symbols)
         genes_seg_data<-update_seg_dup(gene_list_annotated)
         missing_clinvar_data<-update_missing_clinvar(gene_symbols)
         founder_table<-update_founder_vars(gene_symbols)
