@@ -118,3 +118,32 @@ idt_coverage_file<-idt_coverage_file%>%
   left_join(refseq_curated,by=c('transcript_name','exon_num'))
 write.table(idt_coverage_file,file=glue('./accessory_data/idt_genoox_coverage.{Sys.Date()}.csv'),sep='\t',row.names = F,quote = F)
 
+# prepare target gene coverage
+# original files prepared using bedtools:
+# bedtools coverage -a /media/SSD/Bioinformatics/Databases/refseq/refseq_curated_hg19_exons.20240112.bed.gz -b /media/SSD/Bioinformatics/Databases/idt/xgen-exome-research-panel-v2-targets-hg19.bed > refseq_curated.exons_coverage.idt.csv
+target_choices<-c('idt','twist')
+refseq_to_gene<-readr::read_delim('./accessory_data/refseq_to_gene.txt')
+# remove bad chr
+refseq_to_gene<-refseq_to_gene%>%filter(!grepl('_',chrom))
+
+# After each entry in A, reports: 
+# 1) The number of features in B that overlapped the A interval.
+# 2) The number of bases in A that had non-zero coverage.
+# 3) The length of the entry in A.
+# 4) The fraction of bases in A that had non-zero coverage.
+for (target_choice in target_choices){
+  prefix<-glue('refseq_curated.20240112.{target_choice}.pad50')
+  message(glue('parsing {target_choice} target coverage..'))
+  gene_target_cov<-
+    readr::read_delim(glue('./data_for_prepare/{prefix}.coverage.csv.gz'),
+                      col_names = c('chr','start','end','exon_full_name','X1',
+                                    'strand','is_coding','num_of_overlap','num_bases_covered',
+                                    'total_length','pct_covered'))%>%
+    separate(sep = '_exon_',
+             col = exon_full_name,
+             into = c('transcript_name','exon_num'))%>%mutate(exon_num=as.numeric(stringr::str_replace(exon_num,'_.+','')))%>%
+    left_join(refseq_to_gene%>%distinct(transcript_name,gene_symbol))
+  write.table(gene_target_cov,glue('./accessory_data/{prefix}.per_exon_cov.csv'),sep = '\t',row.names = F,quote = F)
+  system(glue('gzip ./accessory_data/{prefix}.per_exon_cov.csv'))
+}
+
